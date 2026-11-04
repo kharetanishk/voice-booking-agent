@@ -18,7 +18,7 @@ The whole voice pipeline is assembled by hand. There is no voice-agent platform 
 │   instant you speak      │               │ Brain: deterministic state machine + tracking-ID parser  │
 │ Gapless 24 kHz playback  │◄─PCM + events─│   Gemini only for off-script turns, constrained output   │
 │ Live timeline + metrics  │               │ Booking client: idempotency key, retries, status check   │
-└──────────────────────────┘               │ Deepgram Aura-2 TTS, streamed sentence by sentence       │
+└──────────────────────────┘               │ Deepgram Aura-2 TTS over one socket per call (~330 ms)   │
                                            └───────────────────────────┬──────────────────────────────┘
                                                                        ▼
                                                         Courier booking API (demo)
@@ -62,14 +62,15 @@ Every event prints one coloured line on the server (`HEARD`, `AGENT`, `BRAIN`, `
 
 ## Measured latency
 
-From a scripted call against the live deployment (synthetic caller audio streamed in real time):
+From scripted calls against the live deployment (synthetic caller audio streamed in real time, server in Mumbai):
 
-| Turn | Agent's first sound after the caller's final transcript |
+| | Time |
 |---|---|
-| Handled by the rules (read-back, slot offer, booking) | 0.75 to 1.2 s |
-| Needs Gemini (off-script question or remark) | 1.5 to 2.3 s |
+| First synthesized audio, every reply after the greeting | 0.30 to 0.35 s |
+| Agent starts replying after the caller's final transcript, rules turn (read-back, slots, booking) | 0.3 to 0.6 s |
+| Same, when Gemini is consulted | about 1.9 s, with *"one moment"* at 0.3 s if it runs long |
 
-Most of the rule-handled time is the first byte of synthesized speech (0.75 to 0.9 s), because the server is in India and Deepgram's speech endpoints are in the US. Hosted in the US, the same pipeline measured 0.14 to 0.3 s to first audio.
+The biggest win was the speech connection. Deepgram's speech endpoints are in the US, about 240 ms away, and its HTTP connections are dropped after roughly 4 s idle, shorter than nearly every pause between turns. A fresh TCP + TLS handshake per reply put first audio at ~800 ms. Each call now holds one Deepgram speech WebSocket open for its whole length (sentences sent as Speak + Flush), which brings first audio to ~330 ms. The socket opens while the greeting plays over HTTP, an interrupted sentence drops its socket so stale audio can't leak into the next reply, and any socket failure falls back to HTTP for that sentence.
 
 ---
 
@@ -110,7 +111,7 @@ For the LLM, either:
 Without any LLM the agent still runs on its rules alone.
 
 ```bash
-bun test            # 166 tests, no keys needed
+bun test            # 169 tests, no keys needed
 bun run typecheck   # strict TypeScript, server and browser
 bun server/chat.ts  # the same agent as a text chat in the terminal
 ```
@@ -163,9 +164,9 @@ docker run -d --name voice-agent --restart unless-stopped \
 | `server/trackingId.ts` | Turns speech into an ID, including corrections |
 | `server/booking.ts` | Safe booking: confirm gate, idempotency key, timeouts, retries, status check |
 | `server/fakeBackend.ts` | The demo courier API, with failure injection for tests |
-| `server/stt.ts`, `server/tts.ts`, `server/llm.ts` | Deepgram speech in and out, Vertex AI and OpenRouter clients |
+| `server/stt.ts`, `server/tts.ts`, `server/llm.ts` | Deepgram streaming STT, per-call Deepgram speech socket, Vertex AI and OpenRouter clients |
 | `web/` | React + Tailwind page: mic worklet, VAD, playback, agent orb, live timeline |
-| `test/` | 166 tests, one file per part, run in CI on every push |
+| `test/` | 169 tests, one file per part, run in CI on every push |
 | `deploy/` | nginx config for production |
 
 For the decisions, what was cut and what is still weak, see **[docs/DESIGN.md](docs/DESIGN.md)**.

@@ -47,7 +47,7 @@ Measured on Vertex AI with the agent's real prompts: Flash Lite starts answering
 - **Two voices at the same loudness.** If someone next to the caller talks as loud as the caller, the recognizer merges them into one sentence. The agent never confirms or books on that, but it may need the ID repeated.
 - **A lone "yes"** is sometimes missed by the recognizer, so the agent asks again. Safe, but slower.
 - **LLM outages.** Models get rate-limited, return empty answers, or time out. When every model in the cascade fails, the agent falls back to fixed replies, so it never goes silent, but it loses the smart layer.
-- **Distance to the speech provider.** The production server is in India and Deepgram's speech endpoints are in the US, so the first byte of synthesized speech takes about 0.75 to 0.9 s. Hosted in the US, the same call measured 0.14 to 0.3 s.
+- **Distance to the speech provider.** The production server is in India and Deepgram is in the US, about 240 ms per round trip. A persistent speech socket per call removed the per-reply handshake (first audio went from ~800 ms to ~330 ms), but the round trip itself remains. The greeting, spoken before the socket is open, still takes about 1 s.
 - **Memory only.** A server restart loses calls in progress and bookings.
 - **Tested mostly with synthetic voices** (generated speech, fake car noise and chatter) plus one real browser session. Not yet with many real callers or real road noise.
 
@@ -56,5 +56,5 @@ Measured on Vertex AI with the agent's real prompts: Flash Lite starts answering
 1. **Measure before tuning:** record real noisy calls and track how often the ID is captured right first time and how long it takes to book.
 2. **Better listening:** a proper voice-activity model on the client, and per-speaker separation, to beat the two-voices problem.
 3. **Persistence:** Redis for sessions and Postgres for bookings, so calls survive a restart and the server can scale out.
-4. **Stream LLM replies into speech** for longer answers, and keep a persistent TTS socket open per call to remove the per-sentence connection setup.
+4. **Stream LLM replies into speech** for longer answers, so Gemini turns start speaking on the first sentence instead of the whole reply.
 5. **Real backend integration** behind the same idempotent booking interface, with alerting on the "outcome unknown" case.

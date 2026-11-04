@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { synthesize, TTS_SAMPLE_RATE } from "../server/tts";
+import { createSpeaker, synthesize, TTS_SAMPLE_RATE } from "../server/tts";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -49,4 +49,97 @@ test("never splits a 16-bit sample across chunks, and loses no audio", async () 
 test("a failed request is an error, not silence", async () => {
   globalThis.fetch = (async () => new Response("busy", { status: 429 })) as unknown as typeof fetch;
   expect(speak()).rejects.toThrow("speech error 429");
+});
+
+// A stand-in for Deepgram's speech socket that the test drives by hand.
+class FakeSocket {
+  binaryType = "";
+  sent: any[] = [];
+  closed = false;
+  onopen?: () => void;
+  onmessage?: (event: { data: unknown }) => void;
+  onclose?: (event: { code: number }) => void;
+  send(data: string) {
+    this.sent.push(JSON.parse(data));
+  }
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    this.onclose?.({ code: 1000 });
+  }
+  audio(size: number) {
+    this.onmessage?.({ data: new Uint8Array(size).buffer });
+  }
+  flushed() {
+    this.onmessage?.({ data: JSON.stringify({ type: "Flushed" }) });
+  }
+}
+
+function fakeSpeaker() {
+  const sockets: FakeSocket[] = [];
+  const speaker = createSpeaker("key", () => {
+    const socket = new FakeSocket();
+    sockets.push(socket);
+    return socket as unknown as WebSocket;
+  });
+  return { speaker, sockets };
+}
+
+async function collect(chunks: AsyncGenerator<Uint8Array>) {
+  let bytes = 0;
+  for await (const chunk of chunks) bytes += chunk.length;
+  return bytes;
+}
+
+test("speaks over HTTP while the socket is still opening, then over the socket", async () => {
+  const requests = fakeDeepgram([480]);
+  const { speaker, sockets } = fakeSpeaker();
+  expect(await collect(speaker.synthesize("Hi.", new AbortController().signal))).toBe(480);
+  expect(requests.length).toBe(1);
+
+  sockets[0]!.onopen!();
+  const reply = collect(speaker.synthesize("Shall I book that?", new AbortController().signal));
+  await Bun.sleep(0);
+  expect(sockets[0]!.sent).toEqual([{ type: "Speak", text: "Shall I book that?" }, { type: "Flush" }]);
+  sockets[0]!.audio(200);
+  sockets[0]!.audio(100);
+  sockets[0]!.flushed();
+  expect(await reply).toBe(300);
+  expect(requests.length).toBe(1);
+  speaker.close();
+});
+
+test("an interrupted sentence drops its socket, so its leftover audio never reaches the next sentence", async () => {
+  fakeDeepgram([480]);
+  const { speaker, sockets } = fakeSpeaker();
+  sockets[0]!.onopen!();
+  const interrupt = new AbortController();
+  const cut = collect(speaker.synthesize("A long answer.", interrupt.signal));
+  await Bun.sleep(0);
+  sockets[0]!.audio(200);
+  interrupt.abort();
+  expect(cut).rejects.toThrow();
+  expect(sockets[0]!.closed).toBe(true);
+  expect(sockets.length).toBe(2);
+
+  sockets[1]!.onopen!();
+  const next = collect(speaker.synthesize("Go ahead.", new AbortController().signal));
+  await Bun.sleep(0);
+  sockets[0]!.audio(999);
+  sockets[1]!.audio(100);
+  sockets[1]!.flushed();
+  expect(await next).toBe(100);
+  speaker.close();
+});
+
+test("a socket that fails before any audio falls back to HTTP for that sentence", async () => {
+  const requests = fakeDeepgram([480]);
+  const { speaker, sockets } = fakeSpeaker();
+  sockets[0]!.onopen!();
+  const reply = collect(speaker.synthesize("Hello.", new AbortController().signal));
+  await Bun.sleep(0);
+  sockets[0]!.onmessage!({ data: JSON.stringify({ type: "Error", description: "busy" }) });
+  expect(await reply).toBe(480);
+  expect(requests.length).toBe(1);
+  speaker.close();
 });

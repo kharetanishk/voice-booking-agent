@@ -8,7 +8,7 @@ import { getSession } from "./session";
 import { isInterruption, isRelevant, realWords } from "./speech";
 import { createStt } from "./stt";
 import { isValid, looksLikeIdStart, updateId } from "./trackingId";
-import { synthesize, TTS_SAMPLE_RATE } from "./tts";
+import { createSpeaker, TTS_SAMPLE_RATE, type Synthesize } from "./tts";
 
 export type Socket = { send: (data: string | Uint8Array) => void };
 export type Call = { sendAudio: (audio: Uint8Array) => void; end: () => void };
@@ -20,7 +20,7 @@ type Shared = {
   recoverMs?: number;
   idPauseMs?: number;
 };
-type Services = { createStt: typeof createStt; synthesize: typeof synthesize };
+type Services = { createStt: typeof createStt; synthesize: Synthesize; close?: () => void };
 
 // Callers pause between characters, so an unfinished ID waits a little longer for the rest.
 const ID_PAUSE_MS = 1600;
@@ -59,7 +59,7 @@ export function startCall(
   socket: Socket,
   sessionId: string,
   { backend, llm, deepgramKey, silenceMs = SILENCE_MS, recoverMs = RECOVER_MS, idPauseMs = ID_PAUSE_MS }: Shared,
-  services: Services = { createStt, synthesize },
+  services: Services = { createStt, ...createSpeaker(deepgramKey) },
 ): Call {
   const session = getSession(sessionId);
 
@@ -398,6 +398,7 @@ export function startCall(
       clearTimeout(recoverTimer);
       clearTimeout(hangUpTimer);
       stt.close();
+      services.close?.();
     },
   };
 }
