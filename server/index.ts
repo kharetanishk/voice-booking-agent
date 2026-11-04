@@ -3,7 +3,7 @@ import { startCall, type Call } from "./call";
 import type { ClientMessage } from "./protocol";
 import { discardSession, releaseSession } from "./session";
 import { createBackend, type Mode } from "./fakeBackend";
-import { createLlm, modelsFromEnv } from "./llm";
+import { createLlm, modelsFromEnv, VERTEX_MODELS, vertexToken, vertexUrl } from "./llm";
 import { banner, log } from "./logger";
 
 type Tier = "free" | "premium";
@@ -15,17 +15,27 @@ if (!deepgramKey) throw new Error("DEEPGRAM_API_KEY is missing. Copy .env.exampl
 const port = Number(process.env.PORT ?? 3000);
 const backend = createBackend();
 const openRouterKey = process.env.OPENROUTER_API_KEY;
+// With VERTEX_PROJECT set, the free tier uses Gemini on Vertex AI instead of OpenRouter.
+// Needs GOOGLE_APPLICATION_CREDENTIALS, the path to a service account key file.
+const vertexProject = process.env.VERTEX_PROJECT;
 
-// Free: free OpenRouter models and the Deepgram voice. Premium: paid OpenRouter models and the ElevenLabs voice.
-// Premium needs an OpenRouter key with credit and an ElevenLabs key. Without them only free is offered.
-const freeModels = modelsFromEnv(process.env.OPENROUTER_MODEL);
+// Standard ("free"): Gemini on Vertex AI, or free OpenRouter models, and the Deepgram voice.
+// Premium: paid OpenRouter models and the ElevenLabs voice. Needs both keys, otherwise only standard is offered.
+const freeModels = vertexProject
+  ? modelsFromEnv(process.env.VERTEX_MODEL, VERTEX_MODELS)
+  : modelsFromEnv(process.env.OPENROUTER_MODEL);
 const paidModels = (process.env.OPENROUTER_PAID_MODEL ?? "google/gemini-2.5-flash,anthropic/claude-haiku-4.5")
   .split(",")
   .map((model) => model.trim())
   .filter(Boolean);
 const premiumReady = Boolean(openRouterKey && process.env.ELEVENLABS_API_KEY);
 const tiers = {
-  free: { llm: openRouterKey ? createLlm(openRouterKey, freeModels) : undefined, voice: "deepgram" as const },
+  free: {
+    llm: vertexProject
+      ? createLlm(vertexToken(), freeModels, vertexUrl(vertexProject))
+      : openRouterKey ? createLlm(openRouterKey, freeModels) : undefined,
+    voice: "deepgram" as const,
+  },
   premium: { llm: openRouterKey ? createLlm(openRouterKey, paidModels) : undefined, voice: "elevenlabs" as const },
 };
 
@@ -65,7 +75,7 @@ Bun.serve<SocketData>({
       const { sessionId } = ws.data;
       activeCalls.get(sessionId)?.end();
       const { tier } = ws.data;
-      log("CALL", `${tier} tier: ${tier === "premium" ? `${paidModels[0]} and the ElevenLabs voice` : "free models and the Deepgram voice"}`, "info", sessionId.slice(0, 4));
+      log("CALL", `${tier} tier: ${tier === "premium" ? `${paidModels[0]} and the ElevenLabs voice` : `${freeModels[0]} and the Deepgram voice`}`, "info", sessionId.slice(0, 4));
       ws.data.call = startCall(ws, sessionId, { backend, ...tiers[tier], deepgramKey });
       activeCalls.set(sessionId, ws.data.call);
     },
@@ -93,7 +103,7 @@ Bun.serve<SocketData>({
 banner("Reschedule voice agent", [
   ["Open", `http://localhost:${port}`],
   ["Listening", "Deepgram nova-3"],
-  ["Free tier", openRouterKey ? `${freeModels[0]} (+${freeModels.length - 1} backups), Deepgram aura-2 voice` : "fixed replies only (set OPENROUTER_API_KEY), Deepgram aura-2 voice"],
+  ["Standard tier", vertexProject || openRouterKey ? `${freeModels[0]} (+${freeModels.length - 1} backups), Deepgram aura-2 voice` : "fixed replies only (set VERTEX_PROJECT or OPENROUTER_API_KEY), Deepgram aura-2 voice"],
   ["Premium tier", premiumReady ? `${paidModels.join(", then ")}, ElevenLabs voice` : "off (needs OPENROUTER_API_KEY and ELEVENLABS_API_KEY)"],
   ["Booking system", "fake courier backend, misbehaves at random (change it with the stress test bar)"],
 ]);

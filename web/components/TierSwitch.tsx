@@ -1,11 +1,11 @@
-// Picks the brain and voice for the next call. Free uses free models and the Deepgram voice,
-// premium uses paid OpenRouter models and the ElevenLabs voice.
+// Picks the brain and voice for the next call. Standard uses Gemini on Vertex AI (or free OpenRouter models)
+// and the Deepgram voice, premium uses paid OpenRouter models and the ElevenLabs voice.
 import { useEffect, useState } from "react";
 import type { Tier } from "../useCall";
 
 const OPTIONS: { tier: Tier; label: string; hint: string }[] = [
-  { tier: "free", label: "Free", hint: "Free OpenRouter models and the Deepgram voice. Costs nothing." },
-  { tier: "premium", label: "Premium", hint: "Paid OpenRouter models (Gemini 2.5 Flash) and the ElevenLabs voice. Uses API credit." },
+  { tier: "free", label: "Standard", hint: "Gemini on Vertex AI and the Deepgram voice." },
+  { tier: "premium", label: "Premium", hint: "Paid OpenRouter models and the ElevenLabs voice. Needs OpenRouter credit and an ElevenLabs key." },
 ];
 
 const STORAGE_KEY = "tier";

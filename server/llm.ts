@@ -1,4 +1,6 @@
-export type ChatTurn = { role: "user" | "assistant"; content: string };
+import { createSign } from "node:crypto";
+
+export type ChatTurn ={ role: "user" | "assistant"; content: string };
 export type Llm = (system: string, turns: ChatTurn[]) => Promise<string>;
 
 // The whole answer must arrive within this, or the agent carries on without it.
@@ -12,7 +14,12 @@ const COOL_DOWN_MS = 60_000;
 // Free models are rate limited and sometimes slow, so they are tried one after another, fastest first, each with a
 // short time limit. Asking them all at once would use up the free quota several times faster.
 // Reasoning is switched off: it adds seconds and can use up the whole token budget before any answer is written.
-export function createLlm(apiKey: string, models: string[]): Llm {
+// apiKey may be a function, for short-lived tokens such as Vertex AI's. url is any OpenAI-compatible chat endpoint.
+export function createLlm(
+  apiKey: string | (() => Promise<string>),
+  models: string[],
+  url = "https://openrouter.ai/api/v1/chat/completions",
+): Llm {
   const restingUntil = new Map<string, number>();
 
   return async (system, turns) => {
@@ -24,9 +31,10 @@ export function createLlm(apiKey: string, models: string[]): Llm {
       const timeLeft = deadline - Date.now();
       if (timeLeft <= 0) break;
       try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const token = typeof apiKey === "string" ? apiKey : await apiKey();
+        const response = await fetch(url, {
           method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             model,
             max_tokens: MAX_TOKENS,
@@ -50,10 +58,50 @@ export function createLlm(apiKey: string, models: string[]): Llm {
   };
 }
 
+// Gemini on Vertex AI through its OpenAI-compatible endpoint, billed to the Google Cloud project. Lite models, because
+// the others spend the token budget thinking.
+export const VERTEX_MODELS = ["google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite"];
+export const vertexUrl = (project: string) =>
+  `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/endpoints/openapi/chat/completions`;
+
+// Signs in as the service account in the key file at GOOGLE_APPLICATION_CREDENTIALS and reuses the token until a
+// minute before it expires. Locally, GOOGLE_ACCESS_TOKEN=$(gcloud auth print-access-token) works too.
+export function vertexToken(): () => Promise<string> {
+  let token = "";
+  let expiresAt = 0;
+  return async () => {
+    if (process.env.GOOGLE_ACCESS_TOKEN) return process.env.GOOGLE_ACCESS_TOKEN;
+    if (Date.now() < expiresAt) return token;
+    const account = await Bun.file(process.env.GOOGLE_APPLICATION_CREDENTIALS!).json();
+    const now = Math.floor(Date.now() / 1000);
+    const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+    const unsigned = `${part({ alg: "RS256", typ: "JWT" })}.${part({
+      iss: account.client_email,
+      scope: "https://www.googleapis.com/auth/cloud-platform",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now,
+      exp: now + 3600,
+    })}`;
+    const signature = createSign("RSA-SHA256").update(unsigned).sign(account.private_key, "base64url");
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: `${unsigned}.${signature}`,
+      }),
+    });
+    if (!response.ok) throw new Error(`token ${response.status} ${(await response.text()).slice(0, 120)}`);
+    const data = (await response.json()) as { access_token: string; expires_in: number };
+    token = data.access_token;
+    expiresAt = Date.now() + (data.expires_in - 60) * 1000;
+    return token;
+  };
+}
+
 // "a,b,c" from the environment, with a default list that was checked to answer quickly on the free tier.
-export function modelsFromEnv(value: string | undefined): string[] {
+export function modelsFromEnv(value: string | undefined, fallback = DEFAULT_MODELS): string[] {
   const list = (value ?? "").split(",").map((model) => model.trim()).filter(Boolean);
-  return list.length ? list : DEFAULT_MODELS;
+  return list.length ? list : fallback;
 }
 
 const DEFAULT_MODELS = [

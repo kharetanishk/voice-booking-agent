@@ -46,3 +46,14 @@ test("says why when every model fails", async () => {
   const llm = createLlm("key", ["a", "b"]);
   expect(llm("system", [])).rejects.toThrow(/a: answered 500, b: answered 429/);
 });
+
+test("asks the given endpoint with the key", async () => {
+  const seen: string[] = [];
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    seen.push(`${url} ${(init.headers as Record<string, string>).Authorization}`);
+    return Response.json({ choices: [{ message: { content: "OK" } }] });
+  }) as typeof fetch;
+  const llm = createLlm("tok", ["a"], "https://gemini.example/chat");
+  expect(await llm("system", [])).toBe("OK");
+  expect(seen).toEqual(["https://gemini.example/chat Bearer tok"]);
+});
