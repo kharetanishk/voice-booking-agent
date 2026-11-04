@@ -1,6 +1,6 @@
-# One page: reschedule-a-delivery voice agent
+# Design notes: reschedule-a-delivery voice agent
 
-**Time spent: about 9 hours** (Friday about 5 h, Saturday about 4 h). All the must-dos and the stretch goal (resume after a drop) are done.
+The decisions behind the agent, what was deliberately left out, and where it is still weak.
 
 ## What I chose, and why
 
@@ -20,13 +20,18 @@ The browser dips the agent's voice the moment the caller makes a sound, which fe
 
 **5. One small repo, no turnkey platform.**
 - Bun with a single process, plus React and Tailwind.
-- Deepgram for listening and the free voice.
-- OpenRouter for the LLM.
+- Deepgram for listening (nova-3, streaming) and speaking (Aura-2, streamed as raw PCM).
+- Gemini on Vertex AI for the LLM, through its OpenAI-compatible endpoint. OpenRouter works as a drop-in alternative.
 - ElevenLabs as an optional Premium voice.
-- The setup is `bun install` plus two keys.
+- The setup is `bun install` plus a Deepgram key and one LLM credential.
+*Why:* owning every hop of the pipeline is the only way to control turn-taking, barge-in and latency precisely, and to see exactly where time goes.
 
-**6. Free by default, Premium as a switch.**
-The brief says free tiers only, so everything works on free keys. Premium (Gemini 2.5 Flash plus ElevenLabs) is opt-in, to show the same pipeline with better parts.
+**6. Swappable brains and voices.**
+Every LLM speaks the same OpenAI-compatible protocol, so Vertex AI, OpenRouter's free models and paid models are a config change. The Premium switch (paid models plus ElevenLabs) shows the same pipeline with different parts.
+*Why:* providers change price, quota and quality from month to month. The pipeline should not care.
+
+**7. Gemini Flash Lite, not a bigger model.**
+Measured on Vertex AI with the agent's real prompts: Flash Lite starts answering in 0.85 to 1.5 s, larger Flash models took 2 to 17 s because they think before answering. The LLM only phrases replies and classifies off-script turns, so speed matters more than depth.
 
 ## What I cut
 
@@ -42,7 +47,8 @@ The brief says free tiers only, so everything works on free keys. Premium (Gemin
 
 - **Two voices at the same loudness.** If someone next to the caller talks as loud as the caller, the recognizer merges them into one sentence. The agent never confirms or books on that, but it may need the ID repeated.
 - **A lone "yes"** is sometimes missed by the recognizer, so the agent asks again. Safe, but slower.
-- **Free LLMs are unreliable.** They get rate-limited, return empty answers, and change from week to week. When they all fail, the agent falls back to fixed replies, so it never goes silent, but it loses the smart layer.
+- **LLM outages.** Models get rate-limited, return empty answers, or time out. When every model in the cascade fails, the agent falls back to fixed replies, so it never goes silent, but it loses the smart layer.
+- **Distance to the speech provider.** The production server is in India and Deepgram's speech endpoints are in the US, so the first byte of synthesized speech takes about 0.75 to 0.9 s. Hosted in the US, the same call measured 0.14 to 0.3 s.
 - **Memory only.** A server restart loses calls in progress and bookings.
 - **Tested mostly with synthetic voices** (generated speech, fake car noise and chatter) plus one real browser session. Not yet with many real callers or real road noise.
 
@@ -51,5 +57,5 @@ The brief says free tiers only, so everything works on free keys. Premium (Gemin
 1. **Measure before tuning:** record real noisy calls and track how often the ID is captured right first time and how long it takes to book.
 2. **Better listening:** a proper voice-activity model on the client, and per-speaker separation, to beat the two-voices problem.
 3. **Persistence:** Redis for sessions and Postgres for bookings, so calls survive a restart and the server can scale out.
-4. **Stream LLM replies into speech** for longer answers, and ship a paid default model once there's a budget.
+4. **Stream LLM replies into speech** for longer answers, and keep a persistent TTS socket open per call to remove the per-sentence connection setup.
 5. **Real backend integration** behind the same idempotent booking interface, with alerting on the "outcome unknown" case.
