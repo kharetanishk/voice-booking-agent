@@ -98,7 +98,7 @@ export function vertexToken(): () => Promise<string> {
   };
 }
 
-// "a,b,c" from the environment, with a default list that was checked to answer quickly on the free tier.
+// "a,b,c" from the environment, with a default list of free OpenRouter models that were checked to answer quickly.
 export function modelsFromEnv(value: string | undefined, fallback = DEFAULT_MODELS): string[] {
   const list = (value ?? "").split(",").map((model) => model.trim()).filter(Boolean);
   return list.length ? list : fallback;

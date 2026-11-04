@@ -1,6 +1,4 @@
-// Turns text into speech (24 kHz PCM16). Deepgram is the free voice, ElevenLabs the premium one.
-
-export type Voice = "deepgram" | "elevenlabs";
+// Turns text into speech with Deepgram Aura-2: 24 kHz PCM16, streamed as it is generated.
 
 export const TTS_SAMPLE_RATE = 24000;
 
@@ -24,23 +22,6 @@ function deepgram(text: string, signal: AbortSignal) {
   }).then(body);
 }
 
-const ELEVENLABS_SETTINGS = {
-  language_code: "en",
-  seed: 7,
-  voice_settings: { stability: 0.75, similarity_boost: 0.85, style: 0, use_speaker_boost: true, speed: 1 },
-};
-
-function elevenlabs(text: string, signal: AbortSignal, previous: string) {
-  const voice = process.env.ELEVENLABS_VOICE_ID ?? "21m00Tcm4TlvDq8ikWAM";
-  const model = process.env.ELEVENLABS_MODEL ?? "eleven_turbo_v2_5";
-  return fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}/stream?output_format=pcm_${TTS_SAMPLE_RATE}`, {
-    method: "POST",
-    headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY!, "Content-Type": "application/json" },
-    body: JSON.stringify({ text, model_id: model, previous_text: previous || undefined, ...ELEVENLABS_SETTINGS }),
-    signal,
-  }).then(body);
-}
-
 // Each chunk must hold whole 16-bit samples, so a split sample is carried to the next chunk.
 async function* wholeSamples(source: AsyncIterable<Uint8Array>) {
   let leftover = new Uint8Array(0);
@@ -54,28 +35,6 @@ async function* wholeSamples(source: AsyncIterable<Uint8Array>) {
   }
 }
 
-type Options = { voice?: Voice; previous?: string; onFallback?: (reason: string) => void };
-
-// ElevenLabs gets a second try before Deepgram is used, because switching voice mid-call is very noticeable.
-// onFallback says when it happens, so it shows in the call log.
-export async function* synthesize(text: string, signal: AbortSignal, options: Options = {}): AsyncGenerator<Uint8Array> {
-  const { voice = "deepgram", previous = "", onFallback } = options;
-  if (voice === "elevenlabs" && process.env.ELEVENLABS_API_KEY) {
-    let reason = "";
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      let started = false;
-      try {
-        for await (const chunk of wholeSamples(await elevenlabs(text, signal, previous))) {
-          started = true;
-          yield chunk;
-        }
-        return;
-      } catch (error) {
-        if (started || signal.aborted) throw error;
-        reason = (error as Error).message;
-      }
-    }
-    onFallback?.(reason);
-  }
+export async function* synthesize(text: string, signal: AbortSignal): AsyncGenerator<Uint8Array> {
   yield* wholeSamples(await deepgram(text, signal));
 }

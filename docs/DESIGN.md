@@ -22,12 +22,11 @@ The browser dips the agent's voice the moment the caller makes a sound, which fe
 - Bun with a single process, plus React and Tailwind.
 - Deepgram for listening (nova-3, streaming) and speaking (Aura-2, streamed as raw PCM).
 - Gemini on Vertex AI for the LLM, through its OpenAI-compatible endpoint. OpenRouter works as a drop-in alternative.
-- ElevenLabs as an optional Premium voice.
 - The setup is `bun install` plus a Deepgram key and one LLM credential.
 *Why:* owning every hop of the pipeline is the only way to control turn-taking, barge-in and latency precisely, and to see exactly where time goes.
 
-**6. Swappable brains and voices.**
-Every LLM speaks the same OpenAI-compatible protocol, so Vertex AI, OpenRouter's free models and paid models are a config change. The Premium switch (paid models plus ElevenLabs) shows the same pipeline with different parts.
+**6. A swappable brain.**
+Every LLM speaks the same OpenAI-compatible protocol, so moving between Vertex AI and OpenRouter is a config change.
 *Why:* providers change price, quota and quality from month to month. The pipeline should not care.
 
 **7. Gemini Flash Lite, not a bigger model.**

@@ -8,14 +8,13 @@ import { getSession } from "./session";
 import { isInterruption, isRelevant, realWords } from "./speech";
 import { createStt } from "./stt";
 import { isValid, looksLikeIdStart, updateId } from "./trackingId";
-import { synthesize, TTS_SAMPLE_RATE, type Voice } from "./tts";
+import { synthesize, TTS_SAMPLE_RATE } from "./tts";
 
 export type Socket = { send: (data: string | Uint8Array) => void };
 export type Call = { sendAudio: (audio: Uint8Array) => void; end: () => void };
 type Shared = {
   backend: Backend;
   llm?: Llm;
-  voice?: Voice;
   deepgramKey: string;
   silenceMs?: number;
   recoverMs?: number;
@@ -59,7 +58,7 @@ const BACKEND_BEHAVIOURS: Record<Mode, string> = {
 export function startCall(
   socket: Socket,
   sessionId: string,
-  { backend, llm, voice, deepgramKey, silenceMs = SILENCE_MS, recoverMs = RECOVER_MS, idPauseMs = ID_PAUSE_MS }: Shared,
+  { backend, llm, deepgramKey, silenceMs = SILENCE_MS, recoverMs = RECOVER_MS, idPauseMs = ID_PAUSE_MS }: Shared,
   services: Services = { createStt, synthesize },
 ): Call {
   const session = getSession(sessionId);
@@ -97,8 +96,6 @@ export function startCall(
     send({ type: "state", stage: session.stage, trackingId: session.trackingId, idConfirmed: session.idConfirmed, bookings: backend.bookings.size });
 
   let hangingUp = false;
-  // The last sentence sent to the voice, so the next one continues in the same tone.
-  let lastSpoken = "";
   // How many times the agent checked "anything else?" after the booking.
   let doneChecks = 0;
 
@@ -159,19 +156,13 @@ export function startCall(
 
   async function streamSpeech(text: string, cancelled: AbortSignal) {
     if (cancelled.aborted) return;
-    const previousSpoken = lastSpoken;
-    lastSpoken = text;
 
     const requestedAt = Date.now();
     let firstAudioAt = requestedAt;
     let bytes = 0;
     try {
       const request = AbortSignal.any([cancelled, AbortSignal.timeout(SPEECH_TIMEOUT_MS)]);
-      for await (const chunk of services.synthesize(text, request, {
-        voice,
-        previous: previousSpoken,
-        onFallback: (reason) => tell("warn", `The ElevenLabs voice failed twice (${reason}), so this sentence used the Deepgram voice`, "VOICE"),
-      })) {
+      for await (const chunk of services.synthesize(text, request)) {
         if (cancelled.aborted) return;
         if (bytes === 0) {
           firstAudioAt = Date.now();

@@ -15,9 +15,7 @@ export const PREVIEW_TIMELINE: TimelineItem[] = [
   { id: 4, seconds: 7, kind: "agent", text: "Let me read that back. B as in Bravo, D as in Delta, 4 1 8 2 0 7. Is that correct?" },
   { id: 5, seconds: 12, kind: "good", text: "Caller confirmed tracking ID BD418207" },
   { id: 6, seconds: 14, kind: "agent", text: "Saturday 1 PM to 3 PM. Shall I book that?" },
-  { id: 7, seconds: 19, kind: "backend", text: "Booking request: the booking system is answering slowly (about 6 seconds)" },
-  { id: 8, seconds: 21, kind: "warn", text: "The system is slow, telling the caller to wait" },
-  { id: 9, seconds: 21, kind: "agent", text: "One moment, still checking." },
-  { id: 10, seconds: 25, kind: "good", text: "Booked Saturday 1 PM to 3 PM, reference CR-7001" },
+  { id: 7, seconds: 19, kind: "info", text: "Booking request (attempt 1 of 2)" },
+  { id: 10, seconds: 19, kind: "good", text: "Booked Saturday 1 PM to 3 PM, reference CR-7001" },
   { id: 11, seconds: 25, kind: "info", text: "Looking up delivery slots (attempt 1 of 2)", technical: true },
 ];

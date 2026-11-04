@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/kharetanishk/voice-booking-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/kharetanishk/voice-booking-agent/actions/workflows/ci.yml)
 
-A real-time voice agent that reschedules parcel deliveries. You talk to it in the browser: it asks for your tracking ID, reads it back phonetically, offers delivery slots and books one when you say yes. The courier backend behind it is fake and misbehaves on purpose (slow, failing, losing replies, hanging), and the agent copes without going silent and without ever booking twice.
+A real-time voice agent that reschedules parcel deliveries. You talk to it in the browser: it asks for your tracking ID, reads it back phonetically, offers delivery slots and books one when you say yes. Behind it, the booking client is built for an unreliable courier API (slow answers, errors, lost replies, hangs): it never goes silent and never books twice, which the test suite proves by injecting each failure.
 
 **Live demo: <https://voice-agent.lunarnodes.co.in>** (Chrome, headphones recommended)
 
@@ -21,7 +21,7 @@ The whole voice pipeline is assembled by hand. There is no voice-agent platform 
 └──────────────────────────┘               │ Deepgram Aura-2 TTS, streamed sentence by sentence       │
                                            └───────────────────────────┬──────────────────────────────┘
                                                                        ▼
-                                                     Fake courier API (chaos modes)
+                                                        Courier booking API (demo)
 ```
 
 ---
@@ -40,6 +40,15 @@ A small state machine owns the conversation. Gemini is consulted only when the r
 
 ### Exactly-once booking under failure
 Each booking gets one idempotency key, saved before the request is sent. Retries reuse it and the backend dedupes on it. If every reply is lost, the agent checks the booking status before telling the caller anything. Anything slow gets *"one moment, still checking"* within 1.5 s.
+
+The demo's courier backend always succeeds. The tests inject each failure into it and check the agent's behaviour:
+
+| Injected failure | What the agent does |
+|---|---|
+| Slow (6 s) | Says *"one moment, still checking"*, then books |
+| Fails | Retries, then says *"nothing has been booked, shall I try again?"* |
+| Loses the reply | The booking was saved but the reply is lost. It retries with the same key and finds it: exactly one booking |
+| Never answers | Gives up after about 17 s and says so honestly |
 
 ### Calls that survive the real world
 - **Dropped connection:** close the tab mid-call, reopen it, press **Resume call**. The session is kept for 10 minutes and the browser reconnects with backoff, so the agent says *"Welcome back"* and continues from the same step.
@@ -79,19 +88,7 @@ Most of the rule-handled time is the first byte of synthesized speech (0.75 to 0
 
 A tracking ID is two letters and six digits, for example *"B as in Bravo, D as in Delta, four one eight two zero seven"*.
 
-### Stress test the booking system
-The bar under the timeline changes how the fake courier API behaves on the **booking request**. Everything before the booking stays normal, so you always get to see the behaviour you picked.
-
-| Option | What the agent does |
-|---|---|
-| Random | Each request may be fast, slow, failing or lose its reply (slot lookups can misbehave too) |
-| Always works | Books straight away |
-| Slow (6 s) | Says *"one moment, still checking"*, then books |
-| Fails | Retries, then says *"nothing has been booked, shall I try again?"* |
-| Loses the reply | The booking is saved but the reply is lost. It retries with the same key and finds it: exactly one booking |
-| Never answers | Gives up after about 17 s and says so honestly |
-
-**Bookings made** on the page, and `/api/bookings`, show that nothing is ever booked twice.
+**Bookings made** on the page, and `/api/bookings`, show every booking the agent has made.
 
 ---
 
@@ -145,13 +142,12 @@ docker run -d --name voice-agent --restart unless-stopped \
 
 | Setting | Required | What it does |
 |---|---|---|
-| `DEEPGRAM_API_KEY` | yes | Speech to text and the standard voice |
+| `DEEPGRAM_API_KEY` | yes | Speech to text and the voice |
 | `VERTEX_PROJECT` | one LLM option | Google Cloud project for Gemini on Vertex AI |
 | `GOOGLE_APPLICATION_CREDENTIALS` | with Vertex | Path to the service account key file |
 | `VERTEX_MODEL` | no | Gemini models, tried in order. Default: Flash Lite 3.5, then 3.1 |
 | `OPENROUTER_API_KEY` | other LLM option | OpenRouter instead of Vertex AI |
-| `OPENROUTER_MODEL` | no | OpenRouter models for the standard tier, tried in order |
-| `OPENROUTER_PAID_MODEL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL` | no | The Premium tier: paid models and an ElevenLabs voice |
+| `OPENROUTER_MODEL` | no | OpenRouter models, tried in order |
 | `PORT` | no | Defaults to 3000 |
 
 ---
@@ -160,15 +156,15 @@ docker run -d --name voice-agent --restart unless-stopped \
 
 | Path | What lives there |
 |---|---|
-| `server/index.ts` | Web server, WebSocket, stress test and booking endpoints |
+| `server/index.ts` | Web server, WebSocket and bookings endpoint |
 | `server/call.ts` | One live call: listening, turn assembly, barge-in, silence, speaking, hang-up |
 | `server/brain.ts` | The conversation. Code owns the state and the rules; the LLM only helps understand and phrase |
 | `server/speech.ts` | Telling the caller apart from echo, fillers and background voices |
 | `server/trackingId.ts` | Turns speech into an ID, including corrections |
 | `server/booking.ts` | Safe booking: confirm gate, idempotency key, timeouts, retries, status check |
-| `server/fakeBackend.ts` | The misbehaving courier API |
-| `server/stt.ts`, `server/tts.ts`, `server/llm.ts` | Deepgram, ElevenLabs, Vertex AI and OpenRouter clients |
-| `web/` | React + Tailwind page: mic worklet, VAD, playback, agent orb, live timeline, stress test |
+| `server/fakeBackend.ts` | The demo courier API, with failure injection for tests |
+| `server/stt.ts`, `server/tts.ts`, `server/llm.ts` | Deepgram speech in and out, Vertex AI and OpenRouter clients |
+| `web/` | React + Tailwind page: mic worklet, VAD, playback, agent orb, live timeline |
 | `test/` | 166 tests, one file per part, run in CI on every push |
 | `deploy/` | nginx config for production |
 

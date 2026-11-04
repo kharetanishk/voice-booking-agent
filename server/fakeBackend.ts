@@ -1,4 +1,5 @@
-// A courier backend that misbehaves on purpose, so the agent has to cope.
+// The courier backend behind the demo. In production every request succeeds.
+// Tests inject the failure modes below to prove the agent copes with a real, unreliable backend.
 
 export type Mode = "ok" | "slow" | "fail" | "lostack" | "hang";
 export type Slot = { id: string; label: string; day: string; period: "morning" | "afternoon" | "evening" };
@@ -11,8 +12,6 @@ type Options = { normalMs?: number; slowMs?: number; failMs?: number };
 
 // ok: answers fast. slow: answers late. fail: errors, nothing saved.
 // lostack: saves the booking but the reply is lost. hang: never answers.
-const WEIGHTS: [Mode, number][] = [["ok", 8], ["slow", 4], ["fail", 4], ["lostack", 3], ["hang", 1]];
-const MODES = WEIGHTS.flatMap(([mode, count]) => Array<Mode>(count).fill(mode));
 
 const WINDOWS = [
   { period: "morning", time: "9 AM to 11 AM" },
@@ -37,10 +36,10 @@ export function createBackend({ normalMs = 300, slowMs = 6000, failMs = 500 }: O
 
   const backend = {
     bookings,
-    // Forces every booking request into one mode. Used by the stress test buttons.
+    // Test only: forces every booking request into one mode.
     // Looking up slots and checking a booking stay normal, so the agent can still recover.
     forced: undefined as Mode | undefined,
-    // Modes used by the next calls, in order. Used by tests.
+    // Test only: modes used by the next calls, in order.
     script: [] as Mode[],
 
     // Tells the listener what the backend decided to do, before it does it.
@@ -52,8 +51,7 @@ export function createBackend({ normalMs = 300, slowMs = 6000, failMs = 500 }: O
     pickMode(kind: CallKind = "book"): Mode {
       const scripted = backend.script.shift();
       if (scripted) return scripted;
-      if (backend.forced) return kind === "book" ? backend.forced : "ok";
-      return MODES[Math.floor(Math.random() * MODES.length)]!;
+      return backend.forced && kind === "book" ? backend.forced : "ok";
     },
 
     slots: () => act("slots", slotList),

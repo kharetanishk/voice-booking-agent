@@ -1,11 +1,9 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { AgentOrb } from "./components/AgentOrb";
 import { Stepper } from "./components/Stepper";
-import { StressTest } from "./components/StressTest";
 import { Timeline } from "./components/Timeline";
 import { TrackingTiles } from "./components/TrackingTiles";
-import { savedTier, TierSwitch } from "./components/TierSwitch";
-import { useCall, type Phase, type Tier } from "./useCall";
+import { useCall, type Phase } from "./useCall";
 
 const PHASE_TEXT: Record<Phase, { title: string; caption: string }> = {
   idle: { title: "Ready", caption: "Press start, then say your tracking ID." },
@@ -24,8 +22,7 @@ const RESPONSE_COLOURS = { good: "bg-good", warn: "bg-warn", bad: "bg-bad" };
 const responseLevel = (ms: number) => (ms < SLOW_RESPONSE_MS ? "good" : ms < BAD_RESPONSE_MS ? "warn" : "bad");
 
 export function App() {
-  const [tier, setTier] = useState<Tier>(savedTier);
-  const call = useCall(tier);
+  const call = useCall();
   const active = call.phase !== "idle";
   const text = PHASE_TEXT[call.phase];
   const stage = useRef<HTMLElement>(null);
@@ -62,7 +59,6 @@ export function App() {
           <Stepper stage={call.stage} />
         </div>
         <div className="flex items-center gap-2.5">
-          <TierSwitch tier={tier} onChange={setTier} locked={active} />
           <span className={`glass inline-flex items-center gap-2 rounded-full px-3.5 py-[7px] text-[13px] ${active ? "text-ink" : "text-muted"}`}>
             <span className={`size-2 rounded-full ${call.phase === "reconnecting" ? "animate-live bg-warn" : active ? "animate-live bg-good shadow-[0_0_0_4px_rgba(63,154,98,0.2)]" : "bg-muted"}`} />
             {call.phase === "reconnecting" ? "Reconnecting" : active ? "On a call" : "Not connected"}
@@ -121,7 +117,6 @@ export function App() {
 
         <div className="flex flex-col gap-4 min-[901px]:min-h-0">
           <Timeline items={call.timeline} interim={call.interim} />
-          <StressTest />
         </div>
       </main>
     </div>
