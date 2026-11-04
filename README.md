@@ -36,7 +36,7 @@ The whole voice pipeline is assembled by hand. There is no voice-agent platform 
 `server/trackingId.ts` turns speech into an ID: NATO words, *"B as in Bravo"*, *"double five"*, *"oh"* as zero, letters run together, and corrections such as *"B not D"* or *"the last two digits are one three"*, even when the fix comes in a second breath. Callers pause between characters, so a half-read ID waits up to 1.6 s for the rest instead of being answered early. Nothing moves on until a plain yes to the read-back.
 
 ### An LLM with guardrails
-A small state machine owns the conversation. Gemini is consulted only when the rules don't understand the caller, and it can only answer with `YES`, `NO`, `SLOT n`, `GOODBYE`, `IGNORE` or `SAY <reply>`, which the code then checks. A vague yes still gets *"Just to be sure, shall I book…?"*. Models are tried as a cascade, each with a 2.2 s budget inside a 4.5 s total, rate-limited models are rested for 60 s, and if every model fails the agent falls back to fixed replies. It never goes silent.
+A small state machine owns the conversation. Gemini is consulted only when the rules don't understand the caller, and it can only answer with `YES`, `NO`, `SLOT n`, `GOODBYE`, `IGNORE` or `SAY <reply>`, which the code then checks. A vague yes still gets *"Just to be sure, shall I book…?"*. The agent knows nothing about the courier beyond this call, so questions about drivers, prices, refunds or the parcel's whereabouts get an honest *"I don't have that information, the courier's customer support can help"* instead of an invented policy; `scripts/eval-honesty.ts` checks this against the real model. Models are tried as a cascade, each with a 2.2 s budget inside a 4.5 s total, rate-limited models are rested for 60 s, and if every model fails the agent falls back to fixed replies. It never goes silent.
 
 ### Exactly-once booking under failure
 Each booking gets one idempotency key, saved before the request is sent. Retries reuse it and the backend dedupes on it. If every reply is lost, the agent checks the booking status before telling the caller anything. Anything slow gets *"one moment, still checking"* within 1.5 s.
@@ -114,6 +114,7 @@ Without any LLM the agent still runs on its rules alone.
 bun test            # 169 tests, no keys needed
 bun run typecheck   # strict TypeScript, server and browser
 bun server/chat.ts  # the same agent as a text chat in the terminal
+bun scripts/eval-honesty.ts  # asks the real LLM 12 questions it can't know the answer to (needs Vertex)
 ```
 
 ---
