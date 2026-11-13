@@ -101,3 +101,10 @@ test("the one in the second one is an answer, not a digit", () => {
   expect(updateId("BD41", "the third one please")).toBe("BD41");
   expect(updateId("", "B D four one eight two zero seven")).toBe("BD418207");
 });
+
+test("a lone pair of letters is the two letters, common words are not", () => {
+  expect(updateId("", "dd")).toBe("DD");
+  expect(updateId("", "bd four one eight")).toBe("BD418");
+  expect(updateId("", "my tracking id")).toBe("");
+  expect(updateId("", "ok")).toBe("");
+});

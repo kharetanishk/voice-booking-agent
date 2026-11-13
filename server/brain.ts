@@ -28,6 +28,7 @@ const FILLERS = [
 // How long the agent waits quietly after the caller says "hold on".
 const HOLD_MS = 30_000;
 const HISTORY_TURNS = 6;
+const LLM_WAIT_NOTICE_MS = 2200;
 const MAX_ANSWER_CHARS = 220;
 const MAX_YES_WORDS = 6;
 
@@ -553,7 +554,8 @@ async function understand({ session, deps, say }: Ctx, unsure: boolean): Promise
   if (!deps.llm) return;
   const spoken = newSpoken();
   // "One moment" only covers silence. Once the answer has started playing it would talk over itself.
-  const options: Options = { ...deps.timing, onWait: () => !spoken.said.length && say("One sec.") };
+  // The model usually starts answering in about 1.4 s, so "one sec" only covers a reply that is genuinely slow.
+  const options: Options = { waitFirstMs: LLM_WAIT_NOTICE_MS, ...deps.timing, onWait: () => !spoken.said.length && say("One sec.") };
   const onText = (soFar: string) => {
     const turn = partialTurn(soFar);
     if (turn.action !== "say" || turn.reply === undefined) return;
@@ -600,7 +602,8 @@ function nextSentences(spoken: Spoken, sentences: string[]): string[] {
     spoken.done++;
     let clean = sentence.replace(/[*_`#>]/g, "").trim();
     if (!clean || spoken.said.length >= MAX_SENTENCES) continue;
-    if (/\?$|\b(please|could you|can you)\b|\bas in\b|\d|\b(character|letter|digit|change|changed|update|updated|correct(ed)?|book(ed)?|slot)\b/i.test(clean)) continue;
+    // Only the code knows what was captured, so a sentence about letters, digits or "noting it down" is dropped too.
+    if (/\?$|\b(please|could you|can you)\b|\bas in\b|\d|\b(characters?|letters?|digits?|numbers?|change|changed|update|updated|correct(ed)?|book(ed)?|slots?|noted|note|saved|recorded|written|captured)\b/i.test(clean)) continue;
     if (spoken.chars + clean.length > MAX_ANSWER_CHARS) {
       if (spoken.said.length) continue;
       clean = clean.slice(0, MAX_ANSWER_CHARS).replace(/\s+\S*$/, "") + ".";
@@ -680,7 +683,9 @@ function nextQuestion(session: Session): string {
 
 function reprompt(session: Session): string {
   switch (session.stage) {
-    case "ASK_ID": return session.trackingId ? "What comes next in the tracking ID?" : "What's your tracking ID?";
+    case "ASK_ID":
+      if (session.heldDigits) return "What are the two letters before the numbers?";
+      return session.trackingId ? "What comes next in the tracking ID?" : "What's your tracking ID?";
     // The ID was just read out in full. Reading it again on every turn is slow and robotic.
     case "CONFIRM_ID": return "Did I get that ID right?";
     case "OFFER_SLOTS": return session.slots.length ? slotPrompt(session) : "Shall I try again?";

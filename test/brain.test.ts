@@ -710,3 +710,19 @@ test("the same question is not tacked onto every answer", async () => {
   const asks = said.filter((line) => line.includes("What's your tracking ID?")).length;
   expect(asks).toBeLessThanOrEqual(2);
 });
+
+test("two letters written as one word complete the ID when the digits were already given", async () => {
+  const { session, said, talk } = setup([], neverCalled);
+  await talk("nine one two one three five");
+  await talk("yes i said dd");
+  expect(session.trackingId).toBe("DD912135");
+  expect(session.stage).toBe("CONFIRM_ID");
+  expect(said.at(-1)).toContain("D as in Delta, D as in Delta");
+});
+
+test("while digits are held, the follow-up asks only for the letters", async () => {
+  const { said, talk } = setup([], answers('{"action":"say","reply":"Thanks, I have noted down those two letters.","slot":0}'));
+  await talk("nine one two one three five", "hmm hang on what");
+  expect(said.join(" ")).not.toContain("noted down");
+  expect(said.at(-1)).not.toContain("What's your tracking ID");
+});

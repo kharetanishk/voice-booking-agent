@@ -7,7 +7,7 @@ import type { ServerMessage } from "./protocol";
 import { getSession } from "./session";
 import { isInterruption, isRelevant, realWords } from "./speech";
 import { createStt } from "./stt";
-import { isValid, looksLikeIdStart, updateId } from "./trackingId";
+import { hasValidShape, isValid, looksLikeIdStart, updateId } from "./trackingId";
 import { createSpeaker, TTS_SAMPLE_RATE, type Synthesize } from "./tts";
 
 export type Socket = { send: (data: string | Uint8Array) => void };
@@ -23,7 +23,7 @@ type Shared = {
 type Services = { createStt: typeof createStt; synthesize: Synthesize; close?: () => void };
 
 // Callers pause between characters, so an unfinished ID waits a little longer for the rest.
-const ID_PAUSE_MS = 1600;
+const ID_PAUSE_MS = 1200;
 // Chunks of speech are collected until the caller pauses this long. Constant background talk gives no pause of its own.
 const CHUNK_PAUSE_MS = 700;
 // A chunk of an unfinished ID that was not followed by a pause: the caller is probably still reading it out.
@@ -217,7 +217,9 @@ export function startCall(
     if (isSpeaking() || session.busy || heardText) return waitForCaller();
     reminders++;
     tell("warn", "The caller said nothing, so the agent asked again", "CALL");
-    speak(`Hello? I can't hear you. ${lastQuestion}`, true);
+    // Just the question, not the acknowledgement in front of it ("Got it, 9 1 2...").
+    const question = lastQuestion.split(/(?<=[.!?])\s+/).slice(-2).join(" ");
+    speak(`Hello? I can't hear you. ${question}`, true);
   }
 
   // The caller spoke over the agent: stop talking now and forget the rest of what was queued.
@@ -311,10 +313,13 @@ export function startCall(
     heardConfidence = Math.min(heardConfidence, confidence);
     heardAt = Date.now();
     // Only wait for more of the ID if this sounded like part of one. Other talk is dealt with straight away.
-    const withThis = updateId(session.trackingId, heardText);
+    let withThis = updateId(session.trackingId, heardText);
+    // Letters said after the digits were held complete the ID right away.
+    if (session.heldDigits && /^[A-Z]{2}$/.test(withThis)) withThis += session.heldDigits;
+    // Waiting only helps an ID that is on its way to being valid. One that can't become valid is answered now.
     const idUnfinished =
       session.stage === "ASK_ID"
-        ? withThis !== session.trackingId && !isValid(withThis)
+        ? withThis !== session.trackingId && !isValid(withThis) && hasValidShape(withThis)
         : looksLikeIdStart(heardText) && !isValid(updateId("", heardText));
     clearTimeout(holdTimer);
     waitingForRestOfId = idUnfinished;
@@ -372,6 +377,13 @@ export function startCall(
     onInterim,
     onFinal: onHeard,
     onUnclear,
+    // The caller stopped talking a while ago, so stop waiting for the rest and answer.
+    onUtteranceEnd: () => {
+      if (!heardText) return;
+      clearTimeout(holdTimer);
+      lastCallerWordAt = 0;
+      void deliver();
+    },
     onError: (message) => tell("bad", message, "LISTEN"),
   });
 

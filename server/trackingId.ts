@@ -153,12 +153,15 @@ const NEUTRAL_WORDS = new Set([
 
 const COMMON_TWO_LETTER_WORDS = new Set([
   "am", "an", "as", "at", "be", "by", "do", "go", "he", "if", "in", "is", "it", "me", "my", "no", "of", "oh", "ok", "on",
-  "or", "so", "to", "up", "us", "we",
+  "or", "so", "to", "up", "us", "we", "hi", "ha", "hm", "mm", "uh", "um", "ah", "er", "ya", "yo", "eh",
+  "id", "pm", "ai", "tv", "mr", "ms", "dr", "st", "pa", "ma", "yes",
 ]);
+// The recognizer often writes two spoken letters as one word: "dd", "bd".
+const isLetterPair = (word: string) => /^[a-z]{2}$/.test(word) && !COMMON_TWO_LETTER_WORDS.has(word);
 const isDigitWord = (word: string) => /^\d+$/.test(word) || DIGIT_WORD_SET.has(word);
 const DIGIT_WORD_SET = new Set(Object.keys(DIGIT_WORDS));
 
-const isIdWord = (word: string) => WORDS.has(word) || /^([a-z0-9]|\d+|[a-z]{2}\d+)$/.test(word);
+const isIdWord = (word: string) => WORDS.has(word) || /^([a-z0-9]|\d+|[a-z]{2}\d+)$/.test(word) || isLetterPair(word);
 
 // Someone reading out an ID says mostly ID words. Background chatter has many other words.
 function looksLikeAnId(clean: string): boolean {
@@ -185,7 +188,8 @@ function toChars(text: string, strict = false): string[] {
       const answeringWhich = before !== undefined && ORDINALS.includes(before) && /^(one|[1-9])$/.test(word);
       const skip = answeringWhich || (strict && alone && !(next && isIdWord(next)) && !(before && isIdWord(before)));
       // The recognizer often writes the two letters as one word, "ab nine zero ...".
-      const pairOfLetters = /^[a-z]{2}$/.test(word) && !COMMON_TWO_LETTER_WORDS.has(word) && next !== undefined && isDigitWord(next);
+      // Followed by digits, or said on its own as the answer to "what are the letters?".
+      const pairOfLetters = isLetterPair(word) && (next === undefined ? out.length === 0 : isDigitWord(next));
       const found = skip
         ? ""
         : (WORDS.get(word) ?? (/^([a-z0-9]|\d+|[a-z]{2}\d+)$/.test(word) || pairOfLetters ? word.toUpperCase() : ""));

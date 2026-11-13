@@ -10,6 +10,8 @@ type Handlers = {
   onFinal: (text: string, confidence?: number, endOfSpeech?: boolean) => void;
   // Speech that was heard but too uncertain to trust, for example in loud background noise.
   onUnclear: (text: string, confidence: number) => void;
+  // The caller has been quiet for utterance_end_ms: whatever was said so far is all there is.
+  onUtteranceEnd?: () => void;
   onError: (message: string) => void;
 };
 
@@ -51,6 +53,7 @@ export function createStt(apiKey: string, handlers: Handlers): Stt {
   socket.onclose = () => handlers.onError("Speech recognition disconnected");
   socket.onmessage = (event) => {
     const message = JSON.parse(String(event.data));
+    if (message.type === "UtteranceEnd") return handlers.onUtteranceEnd?.();
     if (message.type !== "Results") return;
 
     const alternative = message.channel.alternatives[0];
