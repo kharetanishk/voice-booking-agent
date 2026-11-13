@@ -57,3 +57,41 @@ test("asks the given endpoint with the key", async () => {
   expect(await llm("system", [])).toBe("OK");
   expect(seen).toEqual(["https://gemini.example/chat Bearer tok"]);
 });
+
+const sse = (pieces: string[]) =>
+  new Response(pieces.map((p) => `data: ${JSON.stringify({ choices: [{ delta: { content: p } }] })}\n\n`).join("") + "data: [DONE]\n\n");
+
+test("streams the answer piece by piece and asks for JSON", async () => {
+  let body: Record<string, unknown> = {};
+  globalThis.fetch = (async (_url: string, init: RequestInit) => {
+    body = JSON.parse(String(init.body));
+    return sse(['{"action": "say", ', '"reply": "Hi', ' there."}']);
+  }) as typeof fetch;
+  const seen: string[] = [];
+  const llm = createLlm("key", ["google/gemini-3.5-flash"]);
+  expect(await llm("system", [], (soFar) => seen.push(soFar))).toBe('{"action": "say", "reply": "Hi there."}');
+  expect(seen).toEqual(['{"action": "say", ', '{"action": "say", "reply": "Hi', '{"action": "say", "reply": "Hi there."}']);
+  expect(body.stream).toBe(true);
+  expect(body.reasoning_effort).toBe("minimal");
+  expect((body.response_format as { type: string }).type).toBe("json_schema");
+});
+
+test("a model that breaks off after it started speaking is not replaced by another one", async () => {
+  const asked: string[] = [];
+  globalThis.fetch = (async (_url: string, init: RequestInit) => {
+    asked.push(JSON.parse(String(init.body)).model);
+    let sent = false;
+    const stream = new ReadableStream({
+      pull(controller) {
+        if (sent) return controller.error(new Error("connection reset"));
+        sent = true;
+        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: '{"action": "say"' } }] })}\n\n`));
+      },
+    });
+    return new Response(stream);
+  }) as typeof fetch;
+  const llm = createLlm("key", ["a", "b"]);
+  expect(llm("system", [], () => {})).rejects.toThrow(/connection reset/);
+  await Bun.sleep(5);
+  expect(asked).toEqual(["a"]);
+});

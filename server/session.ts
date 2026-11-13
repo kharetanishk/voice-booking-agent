@@ -20,6 +20,10 @@ export type Session = {
   history: Turn[];
   // "no, the last two digits": a correction that names the place but not the value yet.
   pendingFix?: string;
+  // Digits of the ID heard without its two letters. Kept so the caller only has to add the letters.
+  heldDigits?: string;
+  // Tracking IDs in a row that did not come out right, so each retry is worded differently.
+  idMisses?: number;
   // The caller asked for a moment. The agent waits quietly until this time.
   holdUntil?: number;
   busy: boolean;

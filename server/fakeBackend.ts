@@ -2,7 +2,8 @@
 // Tests inject the failure modes below to prove the agent copes with a real, unreliable backend.
 
 export type Mode = "ok" | "slow" | "fail" | "lostack" | "hang";
-export type Slot = { id: string; label: string; day: string; period: "morning" | "afternoon" | "evening" };
+// start and end are hours on a 24-hour clock, so a time the caller says can be matched to a slot.
+export type Slot = { id: string; label: string; day: string; period: "morning" | "afternoon" | "evening"; start: number; end: number };
 export type BackendBooking = { ref: string; key: string; slotId: string };
 
 export type CallKind = "slots" | "book" | "status";
@@ -14,9 +15,9 @@ type Options = { normalMs?: number; slowMs?: number; failMs?: number };
 // lostack: saves the booking but the reply is lost. hang: never answers.
 
 const WINDOWS = [
-  { period: "morning", time: "9 AM to 11 AM" },
-  { period: "afternoon", time: "1 PM to 3 PM" },
-  { period: "evening", time: "4 PM to 6 PM" },
+  { period: "morning", time: "9 AM to 11 AM", start: 9, end: 11 },
+  { period: "afternoon", time: "1 PM to 3 PM", start: 13, end: 15 },
+  { period: "evening", time: "4 PM to 6 PM", start: 16, end: 18 },
 ] as const;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -26,7 +27,7 @@ function slotList(): Slot[] {
     const date = new Date(Date.now() + daysAhead * 86_400_000);
     const day = date.toLocaleDateString("en-US", { weekday: "long" });
     const iso = date.toISOString().slice(0, 10);
-    return WINDOWS.map(({ period, time }, i) => ({ id: `${iso}-${i + 1}`, label: `${day} ${time}`, day, period }));
+    return WINDOWS.map(({ period, time, start, end }, i) => ({ id: `${iso}-${i + 1}`, label: `${day} ${time}`, day, period, start, end }));
   });
 }
 

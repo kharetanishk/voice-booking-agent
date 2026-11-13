@@ -37,11 +37,14 @@ test("collects the ID over several turns", async () => {
   expect(session.stage).toBe("CONFIRM_ID");
 });
 
-test("asks again from the start when part of the ID was missed", async () => {
+test("keeps the digits and asks only for the letters when a letter was missed", async () => {
   const { session, said, talk } = setup();
   await talk("seasoned broccoli D as in Delta four one eight two zero seven");
   expect(session.trackingId).toBe("");
-  expect(said.at(-1)).toContain("from the start");
+  expect(said.at(-1)).toContain("both letters");
+  await talk("bravo delta");
+  expect(session.stage).toBe("CONFIRM_ID");
+  expect(session.trackingId).toBe("BD418207");
 });
 
 test("fixes one letter when the caller corrects it", async () => {
@@ -382,7 +385,7 @@ test("the start of a new ID after confirmation is collected like a fresh ID", as
   await talk(FULL_ID, "yes");
   await talk("k as in kilo five five two zero one nine");
   expect(session.stage).toBe("ASK_ID");
-  expect(said.at(-1)).toContain("from the start");
+  expect(said.at(-1)).toContain("both letters");
   await talk(OTHER_ID);
   expect(session.stage).toBe("CONFIRM_ID");
   expect(session.trackingId).toBe("AK552019");
@@ -403,7 +406,7 @@ test("a bare yes with nothing to confirm is not sent to the LLM", async () => {
   const { said, talk } = setup([], neverCalled);
   await talk(FULL_ID, "yes", "yes");
   expect(said.at(-1)).toContain("not sure what you are answering");
-  expect(said.at(-1)).toContain("Which would you like");
+  expect(said.at(-1)).toContain("Which works for you");
 });
 
 test("just the two letters of a new ID, said after confirmation, start collecting it", async () => {
@@ -519,7 +522,7 @@ test("a vague yes is never enough to book: the agent checks with a plain questio
   await talk(FULL_ID, "yes", "the second one", "I suppose that works");
   expect(backend.bookings.size).toBe(0);
   expect(session.stage).toBe("CONFIRM_SLOT");
-  expect(said.at(-1)).toContain("Just to be sure");
+  expect(said.at(-1)).toContain("Just to confirm");
   await talk("yes");
   expect(backend.bookings.size).toBe(1);
 });
@@ -554,7 +557,7 @@ test("the last one picks the last slot offered, and naming the chosen slot again
   expect(session.chosenSlotId).toBe(session.slots[2]!.id);
   await talk("the last one works fine");
   expect(backend.bookings.size).toBe(0);
-  expect(said.at(-1)).toContain("Just to be sure");
+  expect(said.at(-1)).toContain("Just to confirm");
 });
 
 test("asked the same thing twice, the agent answers in new words instead of repeating itself", async () => {
@@ -563,4 +566,147 @@ test("asked the same thing twice, the agent answers in new words instead of repe
   expect(said.at(-1)).toContain("only use the tracking ID");
   await talk("but why should I tell you my tracking id");
   expect(said.at(-1)).toContain("only used to find your parcel");
+});
+
+test("a day and a spoken time pick that exact slot, without the LLM", async () => {
+  const { session, said, talk } = setup([], neverCalled);
+  await talk(FULL_ID, "yes");
+  const [morning, , evening] = session.slots;
+  await talk(`${evening!.day} 4 pm`);
+  expect(session.chosenSlotId).toBe(evening!.id);
+  await talk("no", "at ten o'clock");
+  expect(session.chosenSlotId).toBe(morning!.id);
+  await talk("no", "option two");
+  expect(session.chosenSlotId).toBe(session.slots[1]!.id);
+  expect(said.at(-1)).toBe(`${session.slots[1]!.label}. Shall I book that?`);
+});
+
+test("a day that is not on offer gets the closest slot at the time asked for", async () => {
+  const { session, said, talk } = setup([], neverCalled);
+  await talk(FULL_ID, "yes");
+  const missing = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].find(
+    (day) => !session.slots.some((slot) => slot.day === day),
+  )!;
+  await talk(`${missing} 4 pm`);
+  expect(session.stage).toBe("CONFIRM_SLOT");
+  expect(said.at(-1)).toBe(`Sorry, I don't have anything on ${missing}, but I do have ${session.slots[2]!.label}. Shall I book that?`);
+});
+
+test("a time that is not on offer gets the nearest slot that day", async () => {
+  const { session, said, talk } = setup([], neverCalled);
+  await talk(FULL_ID, "yes");
+  const evening = session.slots[2]!;
+  await talk(`${evening.day} at 8 pm`);
+  expect(session.chosenSlotId).toBe(evening.id);
+  expect(said.at(-1)).toContain("anything at 8 PM");
+});
+
+test("naming only a day reads out that day's times, then a position picks from them", async () => {
+  const { session, said, talk } = setup([], neverCalled);
+  await talk(FULL_ID, "yes");
+  const later = session.slots[4]!;
+  await talk(`can I do ${later.day} instead`);
+  expect(said.at(-1)).toBe(`On ${later.day}, I have 9 AM to 11 AM, 1 PM to 3 PM or 4 PM to 6 PM. Which time works for you?`);
+  await talk("the second one");
+  expect(session.chosenSlotId).toBe(later.id);
+});
+
+test("wait a second is not the second slot", async () => {
+  const { session, said, talk } = setup([], neverCalled);
+  await talk(FULL_ID, "yes", "wait a second");
+  expect(session.chosenSlotId).toBeUndefined();
+  expect(said.at(-1)).toContain("take your time");
+});
+
+test("digits without letters are kept, and the letters can follow", async () => {
+  const { session, said, talk } = setup();
+  await talk("four one eight two zero seven");
+  expect(said.at(-1)).toContain("I got the numbers 4 1 8 2 0 7");
+  await talk("bravo delta");
+  expect(session.trackingId).toBe("BD418207");
+  expect(session.stage).toBe("CONFIRM_ID");
+});
+
+test("an ID that goes wrong halfway keeps the good start", async () => {
+  const { session, said, talk } = setup();
+  await talk("bravo delta four one alpha two zero seven");
+  expect(said.at(-1)).toContain("then lost you");
+  expect(session.trackingId).toBe("BD41");
+  await talk("eight two zero seven");
+  expect(session.trackingId).toBe("BD418207");
+});
+
+test("a missed ID is asked for in different words each time", async () => {
+  const { said, talk } = setup();
+  await talk("four bravo delta one");
+  await talk("four bravo delta one");
+  expect(said.at(-1)).not.toBe(said.at(-2));
+  expect(said.at(-1)).toContain("two letters then six digits");
+});
+
+test("reads the JSON turn the model is asked for", async () => {
+  const { readMeaning } = await import("../server/brain");
+  expect(readMeaning('{"action":"yes","reply":"","slot":0}')).toEqual({ kind: "yes" });
+  expect(readMeaning('{"action":"slot","reply":"","slot":3}')).toEqual({ kind: "slot", index: 3 });
+  expect(readMeaning('{"action":"say","reply":"I can\'t see that from here.","slot":0}')).toEqual({ kind: "say", text: "I can't see that from here." });
+  expect(readMeaning('{"action":"say","reply":"I changed your slot.","slot":0}')).toBeUndefined();
+});
+
+test("a half-written JSON answer gives up its finished part", async () => {
+  const { partialTurn } = await import("../server/brain");
+  expect(partialTurn('{"action": "say", "reply": "Sure. I can\\u20')).toEqual({ action: "say", reply: "Sure. I can", closed: false });
+  expect(partialTurn('{"action": "say", "reply": "Sure. \\"Yes\\" works.", "sl')).toEqual({ action: "say", reply: 'Sure. "Yes" works.', closed: true });
+  expect(partialTurn('{"act')).toEqual({ action: undefined, closed: false });
+});
+
+test("a streamed reply is spoken sentence by sentence while the model is still writing, and nothing twice", async () => {
+  const spokenEarly: string[] = [];
+  let said: string[] = [];
+  const reply = '{"action": "say", "reply": "I\'m sorry, I don\'t have that information. The courier\'s customer support can tell you.", "slot": 0}';
+  const llm: Llm = async (_system, _turns, onText) => {
+    for (let i = 20; i <= reply.indexOf("customer"); i += 7) onText?.(reply.slice(0, i));
+    spokenEarly.push(...said);
+    onText?.(reply);
+    return reply;
+  };
+  const brain = setup([], llm);
+  said = brain.said;
+  await brain.talk("will the driver call before coming");
+  expect(spokenEarly).toEqual(["I'm sorry, I don't have that information."]);
+  expect(brain.said).toEqual([
+    "I'm sorry, I don't have that information.",
+    "The courier's customer support can tell you.",
+    "What is your tracking ID?",
+  ]);
+});
+
+test("an ignored turn streams nothing", async () => {
+  const llm: Llm = async (_s, _t, onText) => {
+    onText?.('{"action": "ignore", "reply": "Sure thing.", "slot": 0}');
+    return '{"action": "ignore", "reply": "Sure thing.", "slot": 0}';
+  };
+  const session = (await import("../server/session")).newSession("t");
+  const said: string[] = [];
+  const taken = await handleTurn(session, "pass the salt", { backend: createBackend({ normalMs: 1 }), say: (t) => said.push(t), log: () => {}, llm }, true);
+  expect(taken).toBe(false);
+  expect(said).toEqual([]);
+});
+
+test("a caller without the tracking ID is helped once, then offered a way out instead of being asked again", async () => {
+  const { session, said, talk } = setup([], neverCalled);
+  await talk("I don't know my tracking id");
+  expect(said.at(-1)).toContain("text message or email the courier sent");
+  expect(session.holdUntil).toBeGreaterThan(Date.now());
+  await talk("i don't know my tracking id");
+  expect(said.at(-1)).toContain("Shall I end the call for now?");
+  await talk("yes");
+  expect(session.stage).toBe("DONE");
+  expect(said.at(-1)).toContain("Goodbye");
+});
+
+test("the same question is not tacked onto every answer", async () => {
+  const { said, talk } = setup([], answers('{"action":"say","reply":"I only use it to find your parcel.","slot":0}'));
+  await talk("why do you want that", "but why though", "seriously why");
+  const asks = said.filter((line) => line.includes("What is your tracking ID?")).length;
+  expect(asks).toBeLessThanOrEqual(2);
 });
