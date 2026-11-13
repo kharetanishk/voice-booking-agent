@@ -104,6 +104,11 @@ function findPosition(clean: string) {
   return { start, count, end: match.index! + match[0].length };
 }
 
+// "the last digit", "the second letter": the caller is talking about a place in the ID, usually to correct it.
+export function mentionsIdPosition(text: string): boolean {
+  return findPosition(simplify(text)) !== undefined;
+}
+
 // "no, the last two digits" with no new value yet. The value usually follows in the next breath.
 export function namesPositionOnly(text: string): boolean {
   const clean = simplify(text);

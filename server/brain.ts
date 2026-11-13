@@ -5,7 +5,7 @@ import type { Llm } from "./llm";
 import type { Session } from "./session";
 import { matchSlot, type SlotMatch } from "./slotMatch";
 import { isQuestion, wantsNewId } from "./speech";
-import { hasValidShape, ID_LENGTH, idCharsIn, isValid, namesPositionOnly, spell, updateId } from "./trackingId";
+import { hasValidShape, ID_LENGTH, idCharsIn, isValid, mentionsIdPosition, namesPositionOnly, spell, updateId } from "./trackingId";
 
 export type Deps = {
   backend: Backend;
@@ -55,7 +55,8 @@ export async function handleTurn(session: Session, text: string, deps: Deps, uns
 
   remember(session, "user", text);
   session.busy = true;
-  const turn = (unsure ? fallback(ctx, text, true) : route(ctx, text)).finally(() => {
+  // Talk about the ID itself ("the last digit should be five") is clearly for the agent, so it gets the rules.
+  const turn = (unsure && !talksAboutId(text) ? fallback(ctx, text, true) : route(ctx, text)).finally(() => {
     session.busy = false;
   });
   session.turn = turn.then(() => {}, () => {});
@@ -475,7 +476,12 @@ async function act(ctx: Ctx, text: string, meaning: Meaning): Promise<void | typ
       return say(reprompt(session));
     }
     case "yes":
-      if (session.stage === "CONFIRM_ID") return acceptId(ctx);
+      if (session.stage === "CONFIRM_ID") {
+        // The model reads a yes into things like "my tracking id" or a half-heard correction. Confirming the wrong ID
+        // books the wrong parcel, so a "yes" that talks about the ID itself is checked with the caller instead.
+        if (talksAboutId(text)) return say("Sorry, just to be sure, is that tracking ID right now?");
+        return acceptId(ctx);
+      }
       // A booking needs a plain yes, so a yes the LLM read into a vague answer is checked first.
       if (session.stage === "CONFIRM_SLOT" && chosen) return say(`Just to confirm, shall I book ${chosen.label}?`);
       if (session.stage === "DONE") return say("Sure thing. If you've got another parcel to move, just tell me its tracking ID.");
@@ -565,7 +571,9 @@ async function understand({ session, deps, say }: Ctx, unsure: boolean): Promise
   };
   try {
     const turns = session.history.map((turn) => ({ role: turn.role, content: turn.text }));
+    const startedAt = Date.now();
     const raw = await withWaitNotice(options, () => deps.llm!(systemPrompt(session, unsure), turns, onText));
+    deps.log("info", `LLM answered in ${Date.now() - startedAt} ms`);
     const meaning = readMeaning(raw);
     if (meaning?.kind === "say") return { ...meaning, spoken };
     return meaning ?? (spoken.said.length ? { kind: "say", text: "", spoken } : undefined);
@@ -673,6 +681,9 @@ const WHERE_TO_FIND_ID =
 const NO_ID_GIVE_UP = "Without the tracking ID I can't find your delivery, and I don't want to move the wrong one.";
 const END_FOR_NOW = "You can call back any time once you have it. Shall I end the call for now?";
 
+const talksAboutId = (text: string) =>
+  idCharsIn(text) !== "" || mentionsIdPosition(text) || /\b(tracking|id|digits?|letters?|numbers?|characters?)\b/i.test(text);
+
 // The next question, unless the agent asked it in the last two things it said. Hearing the same question after every
 // answer is what makes a voice agent sound like a loop.
 function nextQuestion(session: Session): string {
@@ -687,7 +698,7 @@ function reprompt(session: Session): string {
       if (session.heldDigits) return "What are the two letters before the numbers?";
       return session.trackingId ? "What comes next in the tracking ID?" : "What's your tracking ID?";
     // The ID was just read out in full. Reading it again on every turn is slow and robotic.
-    case "CONFIRM_ID": return "Did I get that ID right?";
+    case "CONFIRM_ID": return /which part/i.test(session.lastSaid) ? "Which part should I change?" : "Did I get that ID right?";
     case "OFFER_SLOTS": return session.slots.length ? slotPrompt(session) : "Shall I try again?";
     case "CONFIRM_SLOT": {
       const chosen = session.slots.find((slot) => slot.id === session.chosenSlotId);

@@ -117,9 +117,10 @@ async function readStream(response: Response, onText: (soFar: string) => void, o
   return text.trim();
 }
 
-// Gemini on Vertex AI through its OpenAI-compatible endpoint, billed to the Google Cloud project. Full Flash with minimal
-// thinking is the smartest model that still starts answering in about 1.3 s; Flash-Lite is the faster backup.
-export const VERTEX_MODELS = ["google/gemini-3.5-flash", "google/gemini-3.1-flash-lite"];
+// Gemini on Vertex AI through its OpenAI-compatible endpoint, billed to the Google Cloud project. The LLM only
+// classifies a turn and phrases short replies, so speed wins: Flash-Lite starts answering fastest, full Flash took about
+// 3 s from the Mumbai server even with minimal thinking.
+export const VERTEX_MODELS = ["google/gemini-3.1-flash-lite", "google/gemini-3.5-flash-lite"];
 export const vertexUrl = (project: string) =>
   `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/endpoints/openapi/chat/completions`;
 

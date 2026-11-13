@@ -6,7 +6,7 @@ export type Intent = { name: string; reply?: string };
 // Specific requests come first, so "wait, who am I talking to" is a question about the agent and not a request to wait.
 const INTENTS: { name: string; match: RegExp; reply?: string }[] = [
   // The caller can't give the ID at all. Asking for it again would just go round in circles.
-  { name: "no ID", match: /\b(don'?t|do not|can'?t|cannot|couldn'?t) (know|have|remember|recall|find|see)\b.{0,25}\b(id|number|code)\b|\b(lost|forgot|misplaced)\b.{0,20}\b(id|number|code)\b|\bno (tracking )?(id|number)\b/i },
+  { name: "no ID", match: /\b(don'?t|do not|can'?t|cannot|couldn'?t) (know|have|remember|recall|find|see)\b.{0,25}\b(id|number|code)\b|\b(lost|forgot|misplaced)\b.{0,20}\b(id|number|code)\b|\bno (tracking )?(id|number)\b|\b(id|number)\b.{0,15}\b(i )?(don'?t|do not) know\b/i },
   { name: "why the ID", match: /\b(why (do you need|should i (tell|give)|are you asking)|(don'?t|do not|won'?t|will not|not going to) (want to )?(tell|give|share)|is (it|this) safe|privacy)\b/i,
     reply: "I only use the tracking ID to find your delivery and move it. I can't reschedule without it, and I won't ask for anything else." },
   { name: "human", match: /\b(human|real person|a person|representative|operator|someone else|customer (service|care|support)|(speak|talk) to (a|someone|somebody))\b/i,

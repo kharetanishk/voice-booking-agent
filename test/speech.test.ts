@@ -95,3 +95,11 @@ test("anything about the delivery is for the agent, however long", () => {
   expect(isRelevant("i don't want to tell you my tracking id what's the weather outside", "ASK_ID")).toBe(true);
   expect(isRelevant("when exactly will the courier come to my house tomorrow", "OFFER_SLOTS")).toBe(true);
 });
+
+test("talk about a place in the ID is relevant, and so is telling the agent to stop", async () => {
+  const { isRelevant } = await import("../server/speech");
+  expect(isRelevant("the last digit is five", "CONFIRM_ID")).toBe(true);
+  expect(isRelevant("no the last digit should be five", "CONFIRM_ID")).toBe(true);
+  expect(isRelevant("shut up", "ASK_ID")).toBe(true);
+  expect(isRelevant("we should leave around six tomorrow", "ASK_ID")).toBe(false);
+});

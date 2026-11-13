@@ -726,3 +726,25 @@ test("while digits are held, the follow-up asks only for the letters", async () 
   expect(said.join(" ")).not.toContain("noted down");
   expect(said.at(-1)).not.toContain("What's your tracking ID");
 });
+
+test("a position correction is handled by the rules even when it reaches the brain as unsure speech", async () => {
+  const { session, said } = setup([], answers('{"action":"yes","reply":"","slot":0}'));
+  const deps = { backend: createBackend({ normalMs: 1 }), say: (t: string) => said.push(t), log: () => {}, llm: answers('{"action":"yes","reply":"","slot":0}') };
+  await handleTurn(session, FULL_ID, deps);
+  await handleTurn(session, "the last digit should be five", deps, true);
+  expect(session.trackingId).toBe("BD418205");
+  expect(session.idConfirmed).toBe(false);
+});
+
+test("an LLM yes to words about the ID does not confirm it", async () => {
+  const { session, said, talk } = setup([], answers('{"action":"yes","reply":"","slot":0}'));
+  await talk(FULL_ID, "my tracking id");
+  expect(session.idConfirmed).toBe(false);
+  expect(said.at(-1)).toContain("just to be sure");
+});
+
+test("after asking which part is wrong, the follow-up asks for the fix, not for a yes", async () => {
+  const { said, talk } = setup([], answers('{"action":"say","reply":"Sorry, I missed that.","slot":0}'));
+  await talk(FULL_ID, "no", "the last");
+  expect(said.at(-1)).toContain("Which part should I change?");
+});
