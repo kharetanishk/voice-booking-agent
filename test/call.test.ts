@@ -95,7 +95,7 @@ test("unclear speech gets a reply instead of silence", async () => {
   await sleep(600);
   handlers().onUnclear("the", 0.2);
   const spoken = messages.filter((message) => message.type === "agent").map((message) => (message as { text: string }).text);
-  expect(spoken.at(-1)).toContain("lot of noise");
+  expect(spoken.at(-1)).toContain("noisy on the line");
 });
 
 test("speech after the agent has stopped is a normal turn", async () => {
@@ -109,9 +109,9 @@ test("speech after the agent has stopped is a normal turn", async () => {
 test("a silent caller is asked again, with the same question, then left alone after three tries", async () => {
   const { call, spoken } = setup(60);
   await sleep(1800);
-  const reminders = spoken().filter((text) => text.startsWith("Sorry, I cannot hear you."));
+  const reminders = spoken().filter((text) => text.startsWith("Hello? I can't hear you."));
   expect(reminders.length).toBe(3);
-  expect(reminders[0]).toContain("What is your tracking ID?");
+  expect(reminders[0]).toContain("What's your tracking ID?");
   call.end();
 });
 
@@ -121,7 +121,7 @@ test("a caller who speaks is not nagged", async () => {
   handlers().onInterim("B as in");
   handlers().onFinal("B as in Bravo D as in Delta four one eight two zero seven");
   await sleep(300);
-  expect(spoken().some((text) => text.startsWith("Sorry, I cannot hear you."))).toBe(false);
+  expect(spoken().some((text) => text.startsWith("Hello? I can't hear you."))).toBe(false);
   call.end();
 });
 
@@ -135,7 +135,7 @@ test("a caller who reconnects is welcomed back and the conversation carries on",
   const second = setup(undefined, first);
   await sleep(100);
   expect(second.spoken()[0]).toContain("Welcome back");
-  expect(second.spoken()[0]).toContain("Is that correct");
+  expect(second.spoken()[0]).toContain("Is that right");
   expect(second.spoken().join(" ")).not.toContain("Hi, I can reschedule");
   expect(second.lastState().trackingId).toBe("BD418207");
 
@@ -178,8 +178,8 @@ test("a booking that finishes while the line is down is reported on reconnect, a
 
   const welcome = second.spoken()[0]!;
   expect(welcome).toContain("Welcome back");
-  expect(welcome).toContain("You are all set");
-  expect(first.spoken().some((text) => text.includes("You are all set"))).toBe(false);
+  expect(welcome).toContain("You're all set");
+  expect(first.spoken().some((text) => text.includes("You're all set"))).toBe(false);
   expect(first.backend.bookings.size).toBe(1);
   second.call.end();
 });
@@ -217,7 +217,7 @@ test("if the caller cut in and it was only background talk, the agent repeats it
   await sleep(30);
   handlers().onFinal("the weather is nice today", 0.5);
   await sleep(100);
-  expect(spoken().at(-1)).toMatch(/^Sorry, as I was saying\. Hi, I can reschedule/);
+  expect(spoken().at(-1)).toMatch(/^Sorry, as I was saying\. Hi there, I can help you reschedule/);
 });
 
 test("if the caller cut in and then said nothing useful, the agent takes the floor back", async () => {
@@ -320,7 +320,7 @@ async function toFailedBooking() {
 
 test("no, you can end up the call: the agent says goodbye and hangs up, it is not treated as someone else", async () => {
   const { say, spoken, types, messages } = await toFailedBooking();
-  expect(spoken().at(-1)).toContain("nothing has been booked");
+  expect(spoken().at(-1)).toContain("nothing's been booked");
   await say("no you can end up the call");
   await sleep(700);
   expect(spoken().at(-1)).toContain("Goodbye");
@@ -369,7 +369,7 @@ test("after a booking, silence first gets one check, then a goodbye, never a sud
   expect(call.spoken().at(-1)).toContain("anything else");
 
   await sleep(1200);
-  expect(call.spoken().at(-1)).toBe("Is there anything else, or shall I end the call?");
+  expect(call.spoken().at(-1)).toBe("Anything else I can help with, or shall I end the call?");
   expect(call.types()).not.toContain("hangup");
 
   await sleep(2000);
@@ -424,4 +424,16 @@ test("if the LLM says it was not meant for the agent, it is ignored", async () =
   call.handlers().onFinal("did you see what happened last night", 0.95, true);
   await sleep(200);
   expect(call.types()).not.toContain("user");
+});
+
+test("a caller who cut in and is still talking is not talked over by the recovery line", async () => {
+  const { call, handlers, spoken } = setup(undefined, undefined, 80);
+  await sleep(100);
+  handlers().onInterim("nine");
+  for (const words of ["nine nine", "nine nine one", "nine nine one one", "nine nine one one two"]) {
+    await sleep(50);
+    handlers().onInterim(words);
+  }
+  expect(spoken().some((line) => line.startsWith("Sorry, as I was saying"))).toBe(false);
+  call.end();
 });

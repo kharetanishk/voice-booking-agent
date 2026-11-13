@@ -20,9 +20,9 @@ export type Deps = {
 type Ctx = { session: Session; deps: Deps; say: (text: string) => void };
 
 const FILLERS = [
-  "One moment, still checking.",
-  "Still working on it, thank you for waiting.",
-  "Sorry, this is taking a while. Almost there.",
+  "Just a sec, still checking.",
+  "Still on it, thanks for bearing with me.",
+  "Sorry, this is taking a bit longer than usual. Nearly there.",
 ];
 
 // How long the agent waits quietly after the caller says "hold on".
@@ -40,7 +40,7 @@ const isYes = (text: string) => YES.test(text) && !NO.test(text) && text.trim().
 const isNo = (text: string) => NO.test(text);
 
 export function greet(session: Session, deps: Deps) {
-  speak(session, deps, "Hi, I can reschedule your delivery. What is your tracking ID?");
+  speak(session, deps, "Hi there, I can help you reschedule your delivery. What's your tracking ID?");
 }
 
 // Handles one thing the caller said. Returns false if it turned out not to be meant for the agent.
@@ -48,7 +48,7 @@ export function greet(session: Session, deps: Deps) {
 export async function handleTurn(session: Session, text: string, deps: Deps, unsure = false): Promise<boolean> {
   const ctx: Ctx = { session, deps, say: (line) => speak(session, deps, line) };
   if (session.busy) {
-    ctx.say("Still working on it, one moment.");
+    ctx.say("Hang on, I'm still on it.");
     return true;
   }
 
@@ -83,7 +83,7 @@ async function route(ctx: Ctx, text: string) {
 
   if (START_OVER.test(text)) {
     clearBookingState(session);
-    return say("No problem, let's start again. What is your tracking ID?");
+    return say("No problem, let's start fresh. What's your tracking ID?");
   }
 
   // The caller can fix or change the ID at any point, not only while we are asking for it.
@@ -98,7 +98,7 @@ async function route(ctx: Ctx, text: string) {
     }
     if (namesPositionOnly(said)) {
       session.pendingFix = said;
-      return say("Sure. What should it be?");
+      return say("Sure, what should it be?");
     }
   }
   if (wantsNewId(text)) return changeId(ctx, text);
@@ -128,7 +128,7 @@ async function afterBooking(ctx: Ctx, text: string) {
   if (isQuestion(text)) return fallback(ctx, text);
   // "yes" to "shall I end the call?" means end it, while "yes" to "anything else?" means there is more.
   const askedToEnd = /end the call/i.test(ctx.session.lastSaid);
-  if (isYes(text) && !askedToEnd) return ctx.say("Sure. If you have another parcel to reschedule, tell me its tracking ID.");
+  if (isYes(text) && !askedToEnd) return ctx.say("Sure thing. If you've got another parcel to move, just tell me its tracking ID.");
   sayGoodbye(ctx);
 }
 
@@ -136,7 +136,7 @@ export function sayGoodbye({ session, deps, say }: Ctx) {
   const booked = session.booking?.status === "done";
   session.stage = "DONE";
   deps.log("good", "The call is ending with a goodbye");
-  say(booked ? "Thanks for calling, have a great day. Goodbye." : "Okay, thanks for calling. Goodbye.");
+  say(booked ? "Thanks for calling, and have a great day. Goodbye." : "Okay, thanks for calling. Take care. Goodbye.");
   deps.hangUp?.();
 }
 
@@ -164,11 +164,11 @@ function changeId(ctx: Ctx, text: string) {
     clearBookingState(session);
     return askId(ctx, text);
   }
-  if (!session.trackingId) return say("No problem. What is the tracking ID?");
+  if (!session.trackingId) return say("No problem. What's the tracking ID?");
   // The ID is in question now, so nothing can be booked against it until it is confirmed again.
   Object.assign(session, { stage: "CONFIRM_ID", idConfirmed: false, slots: [], chosenSlotId: undefined, confirmedSlotId: undefined });
   session.pendingFix = text;
-  say("No problem. Tell me which part to change, for example the last digit is seven, or say the whole new ID.");
+  say("No problem. Tell me which part to change, like the last digit is seven, or just read out the whole new ID.");
 }
 
 // "the third digit is 9" or "B not D": a correction that says where, as opposed to a whole new ID.
@@ -189,7 +189,7 @@ function replaceId(ctx: Ctx, id: string) {
     confirmedSlotId: undefined,
     booking: undefined,
   });
-  say(different ? `I heard a new tracking ID. ${spell(id)}. Is that correct?` : `Sorry about that. So it is ${spell(id)}. Is that correct?`);
+  say(different ? `Oh, a different ID. Let me read it back: ${spell(id)}. Is that right?` : `Ah, sorry about that. So that's ${spell(id)}. Is that right?`);
 }
 
 // The two letters an ID begins with, a few characters that begin with a letter, or several of any kind.
@@ -216,7 +216,7 @@ function askId(ctx: Ctx, text: string) {
   if (session.heldDigits && /^[A-Z]{1,2}$/.test(id)) {
     if (id.length === 1) {
       session.trackingId = id;
-      return say(`${spell(id)}. And the second letter?`);
+      return say(`${spell(id)}, got it. And the second letter?`);
     }
     id += session.heldDigits;
   }
@@ -232,9 +232,9 @@ function askId(ctx: Ctx, text: string) {
   deps.log("info", `Understood so far: ${[...id.padEnd(ID_LENGTH, "_")].join(" ")}`);
   if (isValid(id)) {
     session.stage = "CONFIRM_ID";
-    return say(`Let me read that back. ${spell(id)}. Is that correct?`);
+    return say(`Okay, let me read that back. ${spell(id)}. Is that right?`);
   }
-  say(`I have ${spell(id)}. What comes next?`);
+  say(`Got it, ${spell(id)}. What comes next?`);
 }
 
 // What was heard is not two letters then six digits. Keep what can be kept and ask only for what is missing,
@@ -250,9 +250,9 @@ function missedId(ctx: Ctx, id: string) {
     session.trackingId = "";
     session.heldDigits = digits.slice(0, ID_LENGTH - 2);
     const numbers = [...session.heldDigits].join(" ");
-    if (!letters) return say(`I got the numbers ${numbers}. The ID starts with two letters. What are they?`);
-    if (letters.length === 1) return say(`I got ${spell(letters)}, then ${numbers}, but the ID starts with two letters. What are both letters?`);
-    return say(`I heard ${letters.length} letters, ${spell(letters)}, but the ID has only two. Which two letters is it?`);
+    if (!letters) return say(`Got it, ${numbers}. There should be two letters before the numbers. What are they?`);
+    if (letters.length === 1) return say(`I've got ${spell(letters)}, then ${numbers}, but there should be two letters at the start. What are both letters?`);
+    return say(`Hmm, I heard ${letters.length} letters, ${spell(letters)}, but the ID only has two. Which two is it?`);
   }
 
   // The start was fine and then it went wrong: keep the start and ask for the rest.
@@ -260,15 +260,15 @@ function missedId(ctx: Ctx, id: string) {
   while (good && !hasValidShape(good)) good = good.slice(0, -1);
   if (good.length >= 2 && session.idMisses <= 2) {
     session.trackingId = good;
-    return say(`I got ${spell(good)}, then lost you. What comes after that?`);
+    return say(`I got ${spell(good)}, then I lost you for a second. What comes after that?`);
   }
 
   session.trackingId = "";
   session.heldDigits = undefined;
   const lines = [
-    "Sorry, I missed part of that. Could you say the tracking ID again, a little slower?",
-    "Sorry, I still did not get it. It is two letters then six digits, for example B D 4 1 8 2 0 7.",
-    "Let's take it in pieces. Just the two letters first, for example B as in Bravo, D as in Delta.",
+    "Sorry, I missed a bit of that. Could you say the tracking ID again, a little slower?",
+    "Sorry, I'm still not getting it. It's two letters and then six digits, like B D 4 1 8 2 0 7.",
+    "Let's take it bit by bit. Just the two letters first, like B as in Bravo, D as in Delta.",
   ];
   say(lines[Math.min(session.idMisses, lines.length) - 1]!);
 }
@@ -281,9 +281,9 @@ async function confirmId(ctx: Ctx, text: string) {
   if (next !== session.trackingId && isValid(next)) return replaceId(ctx, next);
   // Letters or digits we could not place. Never hand these to the LLM, it would make up its own version of the ID.
   if (idCharsIn(text)) {
-    return say("Sorry, I could not tell which part to change. You can say, for example, the last digit is seven, or say the whole ID again.");
+    return say("Sorry, I couldn't tell which part to change. You could say something like the last digit is seven, or just read the whole ID again.");
   }
-  if (isNo(text)) return say("Sorry about that. Which part is wrong? You can just say the fix, like the last two digits are one three.");
+  if (isNo(text)) return say("Oh, sorry about that. Which part's wrong? Just tell me the fix, like the last two digits are one three.");
   await fallback(ctx, text);
 }
 
@@ -300,14 +300,14 @@ function chooseThis(ctx: Ctx, slot: Slot, lead = `${slot.label}.`) {
   deps.log("info", `Caller chose ${slot.label}`);
   session.chosenSlotId = slot.id;
   session.stage = "CONFIRM_SLOT";
-  say(`${lead} Shall I book that?`);
+  say(`${lead} Shall I go ahead and book that?`);
 }
 
 // The caller named a slot, a day, or a time. One slot fits: confirm it. Several fit: read just those out.
 // Nothing fits: say so and offer the closest one, instead of a dead end.
 function offerMatch(ctx: Ctx, match: SlotMatch) {
   const { session, say } = ctx;
-  const sorry = match.instead ? `Sorry, I don't have ${match.instead}` : "";
+  const sorry = match.instead ? `Ah, I don't have ${match.instead}` : "";
   if ("slot" in match) return chooseThis(ctx, match.slot, sorry ? `${sorry}, but I do have ${match.slot.label}.` : undefined);
 
   const { options } = match;
@@ -331,10 +331,10 @@ async function offerSlots(ctx: Ctx) {
 
   if (!slots) {
     deps.log("bad", "Could not load delivery slots");
-    return say("I am having trouble reaching the scheduling system. Shall I try again?");
+    return say("Hmm, I'm having trouble reaching the scheduling system. Shall I try again?");
   }
   session.slots = slots;
-  say(`Thanks. ${slotPrompt(session)}`);
+  say(`Great, thanks. ${slotPrompt(session)}`);
 }
 
 async function chooseSlot(ctx: Ctx, text: string) {
@@ -342,7 +342,7 @@ async function chooseSlot(ctx: Ctx, text: string) {
   if (!session.slots.length) {
     if (isNo(text)) {
       session.stage = "DONE";
-      return say("No problem. Please call back any time. Goodbye.");
+      return say("No problem. Feel free to call back any time. Goodbye.");
     }
     return offerSlots(ctx);
   }
@@ -372,7 +372,7 @@ async function confirmSlot(ctx: Ctx, text: string) {
   if (isNo(text)) {
     session.stage = "OFFER_SLOTS";
     session.chosenSlotId = undefined;
-    return say(`No problem. ${slotPrompt(session)}`);
+    return say(`No worries. ${slotPrompt(session)}`);
   }
   await fallback(ctx, text);
 }
@@ -389,16 +389,16 @@ async function book(ctx: Ctx, slot: Slot) {
   if (booking.status === "done") {
     session.stage = "DONE";
     deps.log("good", `Booked ${slot.label}, reference ${booking.ref}`);
-    return say(`You are all set. Your delivery is booked for ${slot.label}. Your reference is ${booking.ref!.replace("-", " ")}. Is there anything else I can help with?`);
+    return say(`You're all set. Your delivery is now booked for ${slot.label}. Your reference is ${booking.ref!.replace("-", " ")}. Is there anything else I can help with?`);
   }
   if (booking.status === "failed") {
     session.stage = "CONFIRM_SLOT";
     session.confirmedSlotId = undefined;
     deps.log("bad", "Booking failed, nothing was booked");
-    return say("Sorry, I could not complete the booking, and nothing has been booked. Shall I try again?");
+    return say("Sorry, I couldn't complete the booking, and nothing's been booked. Shall I try again?");
   }
   deps.log("bad", "Booking outcome unknown");
-  say("I could not confirm whether the booking went through, and I do not want to book twice. Shall I check again?");
+  say("I couldn't confirm whether that went through, and I don't want to book it twice. Shall I check again?");
 }
 
 // The booking outcome was unknown. Checking again is safe because the booking key never changes.
@@ -407,7 +407,7 @@ async function retryBooking(ctx: Ctx, text: string) {
   if (isYes(text)) return book(ctx, session.slots.find((slot) => slot.id === session.chosenSlotId)!);
   if (isNo(text)) {
     session.stage = "DONE";
-    return say("Understood. Please call back shortly to check the booking. Goodbye.");
+    return say("Understood. Please call back in a little while to check on it. Goodbye.");
   }
   await fallback(ctx, text);
 }
@@ -434,7 +434,7 @@ async function fallback(ctx: Ctx, text: string, unsure = false): Promise<void | 
 
   // A bare yes or no with nothing to confirm is not something to ask the LLM about.
   if (!unsure && (isYes(text) || isNo(text)) && text.trim().split(/\s+/).length <= 3) {
-    return say(`Sorry, I am not sure what you are answering. ${reprompt(session)}`);
+    return say(`Sorry, I'm not sure what you're answering. ${reprompt(session)}`);
   }
 
   const meaning = await understand(ctx, unsure);
@@ -442,9 +442,9 @@ async function fallback(ctx: Ctx, text: string, unsure = false): Promise<void | 
 
   // No LLM answer. Unsure speech is let go, anything else gets a fixed reply so the caller is never left in silence.
   if (unsure) return IGNORED;
-  if (isQuestion(text)) return say(`I can only help with rescheduling your delivery. ${reprompt(session)}`);
+  if (isQuestion(text)) return say(`I'm afraid I can only help with rescheduling your delivery. ${reprompt(session)}`);
   // Said again, the same words sound like a broken record.
-  const sorry = session.lastSaid.startsWith("Sorry, I did not catch that") ? "Sorry, I still did not get that." : "Sorry, I did not catch that.";
+  const sorry = session.lastSaid.startsWith("Sorry, I didn't catch that") ? "Sorry, I still didn't get that." : "Sorry, I didn't catch that.";
   say(`${sorry} ${reprompt(session)}`);
 }
 
@@ -477,14 +477,14 @@ async function act(ctx: Ctx, text: string, meaning: Meaning): Promise<void | typ
       if (session.stage === "CONFIRM_ID") return acceptId(ctx);
       // A booking needs a plain yes, so a yes the LLM read into a vague answer is checked first.
       if (session.stage === "CONFIRM_SLOT" && chosen) return say(`Just to confirm, shall I book ${chosen.label}?`);
-      if (session.stage === "DONE") return say("Sure. If you have another parcel to reschedule, tell me its tracking ID.");
+      if (session.stage === "DONE") return say("Sure thing. If you've got another parcel to move, just tell me its tracking ID.");
       return say(reprompt(session));
     case "no":
-      if (session.stage === "CONFIRM_ID") return say("Sorry about that. Which part is wrong? You can just say the fix, like the last digit is seven.");
+      if (session.stage === "CONFIRM_ID") return say("Oh, sorry about that. Which part's wrong? Just tell me the fix, like the last digit is seven.");
       if (session.stage === "CONFIRM_SLOT") {
         session.stage = "OFFER_SLOTS";
         session.chosenSlotId = undefined;
-        return say(`No problem. ${slotPrompt(session)}`);
+        return say(`No worries. ${slotPrompt(session)}`);
       }
       if (session.stage === "DONE") return sayGoodbye(ctx);
       return say(reprompt(session));
@@ -553,7 +553,7 @@ async function understand({ session, deps, say }: Ctx, unsure: boolean): Promise
   if (!deps.llm) return;
   const spoken = newSpoken();
   // "One moment" only covers silence. Once the answer has started playing it would talk over itself.
-  const options: Options = { ...deps.timing, onWait: () => !spoken.said.length && say("One moment.") };
+  const options: Options = { ...deps.timing, onWait: () => !spoken.said.length && say("One sec.") };
   const onText = (soFar: string) => {
     const turn = partialTurn(soFar);
     if (turn.action !== "say" || turn.reply === undefined) return;
@@ -650,7 +650,7 @@ function answerIntent({ session, deps, say }: Ctx, intent: Intent) {
       return sayGoodbye({ session, deps, say });
     case "wait":
       session.holdUntil = Date.now() + HOLD_MS;
-      return say("Of course, take your time. I will be here.");
+      return say("Of course, take your time. I'll be right here.");
     case "repeat":
       return say(`Sure. ${session.lastSaid.replace(/^(Sure\. )+/, "")}`);
     case "no ID":
@@ -680,9 +680,9 @@ function nextQuestion(session: Session): string {
 
 function reprompt(session: Session): string {
   switch (session.stage) {
-    case "ASK_ID": return session.trackingId ? "What comes next in the tracking ID?" : "What is your tracking ID?";
+    case "ASK_ID": return session.trackingId ? "What comes next in the tracking ID?" : "What's your tracking ID?";
     // The ID was just read out in full. Reading it again on every turn is slow and robotic.
-    case "CONFIRM_ID": return "Is the tracking ID I read out correct?";
+    case "CONFIRM_ID": return "Did I get that ID right?";
     case "OFFER_SLOTS": return session.slots.length ? slotPrompt(session) : "Shall I try again?";
     case "CONFIRM_SLOT": {
       const chosen = session.slots.find((slot) => slot.id === session.chosenSlotId);

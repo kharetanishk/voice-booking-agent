@@ -202,7 +202,7 @@ export function startCall(
     if (session.stage === "DONE") {
       silenceTimer = setTimeout(() => {
         if (isSpeaking() || session.busy) return waitForCaller();
-        if (doneChecks++ === 0) return speak("Is there anything else, or shall I end the call?", true);
+        if (doneChecks++ === 0) return speak("Anything else I can help with, or shall I end the call?", true);
         sayGoodbye({ session, deps, say: speak });
       }, silenceMs + afterSpeech);
       return;
@@ -217,7 +217,7 @@ export function startCall(
     if (isSpeaking() || session.busy || heardText) return waitForCaller();
     reminders++;
     tell("warn", "The caller said nothing, so the agent asked again", "CALL");
-    speak(`Sorry, I cannot hear you. ${lastQuestion}`, true);
+    speak(`Hello? I can't hear you. ${lastQuestion}`, true);
   }
 
   // The caller spoke over the agent: stop talking now and forget the rest of what was queued.
@@ -235,8 +235,17 @@ export function startCall(
   }
 
   // The caller cut in but nothing useful followed, so it was probably noise. Take the floor back and repeat.
-  function recover() {
+  // Unless they are still talking: words on the live transcript arrive long before the recognizer finalises them, so a
+  // caller reading out an ID would otherwise be talked over mid-sentence. "background" skips that wait: the words
+  // were already judged to be other people talking.
+  function recover(background = false) {
     if (!cutIn || isSpeaking() || session.busy || heardText) return;
+    const quietFor = Date.now() - lastCallerWordAt;
+    if (!background && quietFor < recoverMs) {
+      clearTimeout(recoverTimer);
+      recoverTimer = setTimeout(recover, recoverMs - quietFor);
+      return;
+    }
     cutIn = false;
     tell("info", "Nothing useful followed the interruption, so the agent carried on", "BARGE-IN");
     speak(`Sorry, as I was saying. ${session.lastSaid}`, true);
@@ -283,7 +292,7 @@ export function startCall(
     tell("info", `Ignored "${text}", it sounded like talk between other people`, "LISTEN");
     if (++backgroundChunks >= BACKGROUND_CHUNKS_BEFORE_NOTICE && !backgroundNoticeGiven && !heardText) {
       backgroundNoticeGiven = true;
-      speak("I can hear other people talking nearby. If you can, please move away from them or speak closer to the microphone.", true);
+      speak("I can hear other people talking nearby. If you can, move somewhere a bit quieter or closer to the mic.", true);
       return;
     }
     recoverNow();
@@ -316,7 +325,7 @@ export function startCall(
   // Heard something, but too unclear to trust. Ask again instead of staying silent.
   function onUnclear(text: string, confidence: number) {
     tell("warn", `Could not make out "${text}" (confidence ${confidence.toFixed(2)})`, "LISTEN");
-    if (!isSpeaking() && !heardText) speak("Sorry, there is a lot of noise on the line. Could you say that again?", true);
+    if (!isSpeaking() && !heardText) speak("Sorry, it's a bit noisy on the line. Could you say that again?", true);
   }
 
   async function deliver() {
@@ -348,7 +357,7 @@ export function startCall(
       }
     } catch (error) {
       tell("bad", `Something went wrong: ${(error as Error).message}`, "CALL");
-      speak("Sorry, something went wrong on my side. Could you say that again?");
+      speak("Sorry, something went wrong on my end. Could you say that again?");
     }
     sendState();
   }
@@ -356,7 +365,7 @@ export function startCall(
   // If the caller had cut in and then turned out to be background talk, pick up straight away.
   function recoverNow() {
     clearTimeout(recoverTimer);
-    recover();
+    recover(true);
   }
 
   const stt = services.createStt(deepgramKey, {
@@ -381,7 +390,7 @@ export function startCall(
     await session.turn;
     if (ended) return;
     lastQuestion = session.lastSaid;
-    speak(`Welcome back, sorry about the interruption. ${session.lastSaid}`, true);
+    speak(`Welcome back, sorry about that. ${session.lastSaid}`, true);
     sendState();
   }
 

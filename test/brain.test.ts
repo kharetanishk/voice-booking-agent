@@ -25,7 +25,7 @@ test("books a delivery on the happy path", async () => {
   await talk(FULL_ID, "yes", "the second one", "yes");
   expect(session.stage).toBe("DONE");
   expect(backend.bookings.size).toBe(1);
-  expect(said.at(-1)).toContain("You are all set");
+  expect(said.at(-1)).toContain("You're all set");
 });
 
 test("collects the ID over several turns", async () => {
@@ -94,7 +94,7 @@ test("a failed booking is reported honestly and can be retried", async () => {
   await talk(FULL_ID, "yes", "the second one");
   backend.script = ["fail", "fail", "fail", "ok"];
   await talk("yes");
-  expect(said.at(-1)).toContain("nothing has been booked");
+  expect(said.at(-1)).toContain("nothing's been booked");
   expect(session.stage).toBe("CONFIRM_SLOT");
   expect(backend.bookings.size).toBe(0);
   await talk("yes");
@@ -108,7 +108,7 @@ test("an unreachable backend leaves the outcome unknown and checking again is sa
   backend.script = ["lostack", "lostack", "lostack", "fail", "fail"];
   await talk("yes");
   expect(session.stage).toBe("BOOKING");
-  expect(said.at(-1)).toContain("do not want to book twice");
+  expect(said.at(-1)).toContain("don't want to book it twice");
   await talk("yes");
   expect(session.stage).toBe("DONE");
   expect(backend.bookings.size).toBe(1);
@@ -130,7 +130,7 @@ test("tells the caller to wait while the backend is slow", async () => {
   await talk(FULL_ID, "yes", "the second one");
   backend.script = ["slow"];
   await talk("yes");
-  expect(said.some((line) => line.includes("One moment"))).toBe(true);
+  expect(said.some((line) => line.includes("Just a sec"))).toBe(true);
   expect(session.stage).toBe("DONE");
 });
 
@@ -148,7 +148,7 @@ test("still replies when the LLM fails", async () => {
   };
   const { said, talk } = setup([], llm);
   await talk("purple banana window");
-  expect(said.at(-1)).toContain("did not catch that");
+  expect(said.at(-1)).toContain("didn't catch that");
 });
 
 test("start over resets the call", async () => {
@@ -172,15 +172,15 @@ test("who are you is answered from rules, without the LLM, then the agent asks a
 test("a request for a human is answered honestly", async () => {
   const { said, talk } = setup([], neverCalled);
   await talk("can I speak to a real person");
-  expect(said.at(-1)).toContain("cannot transfer");
+  expect(said.at(-1)).toContain("not able to transfer");
 });
 
 test("questions the agent cannot answer are not made up", async () => {
   const { said, talk } = setup([], neverCalled);
   await talk("where is my parcel right now");
-  expect(said.at(-1)).toMatch(/cannot look up/);
+  expect(said.at(-1)).toMatch(/can't see where your parcel/);
   await talk("how much does this cost");
-  expect(said.at(-1)).toMatch(/cannot quote/);
+  expect(said.at(-1)).toMatch(/can.t quote/);
 });
 
 test("hold on makes the agent wait quietly", async () => {
@@ -275,7 +275,7 @@ test("a new ID said after the old one was confirmed has to be confirmed again", 
   expect(session.idConfirmed).toBe(false);
   expect(session.stage).toBe("CONFIRM_ID");
   expect(session.slots).toEqual([]);
-  expect(said.at(-1)).toContain("new tracking ID");
+  expect(said.at(-1)).toContain("different ID");
 
   await talk("yes");
   expect(session.idConfirmed).toBe(true);
@@ -318,7 +318,7 @@ test("the new ID can be given in the same sentence as the request to change it",
   await talk(FULL_ID, "yes", `actually I want to change the tracking ID to ${OTHER_ID}`);
   expect(session.trackingId).toBe("AK552019");
   expect(session.stage).toBe("CONFIRM_ID");
-  expect(said.at(-1)).toContain("Is that correct");
+  expect(said.at(-1)).toContain("Is that right");
 });
 
 test("saying the ID is wrong while it is being confirmed asks for a new one", async () => {
@@ -341,14 +341,14 @@ test("a completely different ID while confirming is called out as a different ID
   const { session, said, talk } = setup();
   await talk(FULL_ID, OTHER_ID);
   expect(session.trackingId).toBe("AK552019");
-  expect(said.at(-1)).toContain("new tracking ID");
+  expect(said.at(-1)).toContain("different ID");
   expect(session.idConfirmed).toBe(false);
 });
 
 test("a one letter fix while confirming still says sorry about that", async () => {
   const { said, talk } = setup();
   await talk("D as in Delta, D as in Delta, four one eight two zero seven", "no, B as in Bravo, not D");
-  expect(said.at(-1)).toContain("Sorry about that");
+  expect(said.at(-1)).toContain("sorry about that");
 });
 
 test("a different ID said while the first one is still being collected replaces it", async () => {
@@ -368,7 +368,7 @@ test("after a booking is done a new ID starts a new request and the old booking 
   expect(session.stage).toBe("CONFIRM_ID");
   expect(session.trackingId).toBe("AK552019");
   expect(backend.bookings.size).toBe(1);
-  expect(said.at(-1)).toContain("Is that correct");
+  expect(said.at(-1)).toContain("Is that right");
 });
 
 test("a new ID that arrives garbled in two pieces is put together once both pieces are heard", async () => {
@@ -405,7 +405,7 @@ test("answers to the slot question are not mistaken for the start of an ID", asy
 test("a bare yes with nothing to confirm is not sent to the LLM", async () => {
   const { said, talk } = setup([], neverCalled);
   await talk(FULL_ID, "yes", "yes");
-  expect(said.at(-1)).toContain("not sure what you are answering");
+  expect(said.at(-1)).toContain("not sure what you're answering");
   expect(said.at(-1)).toContain("Which works for you");
 });
 
@@ -432,7 +432,7 @@ test("a correction split over two breaths is put together: no the last two digit
   const { session, said, talk } = setup([], neverCalled);
   await talk("A B nine zero nine five nine seven");
   await talk("no the last two digit");
-  expect(said.at(-1)).toContain("What should it be");
+  expect(said.at(-1)).toContain("what should it be");
   await talk("should be one three");
   expect(session.trackingId).toBe("AB909513");
   expect(said.at(-1)).toContain("9 0 9 5 1 3");
@@ -454,7 +454,7 @@ test("ID characters the agent cannot place are never sent to the LLM", async () 
   const { session, said, talk } = setup([], neverCalled);
   await talk(FULL_ID, "five three");
   expect(session.trackingId).toBe("BD418207");
-  expect(said.at(-1)).toContain("could not tell which part");
+  expect(said.at(-1)).toContain("couldn't tell which part");
 });
 
 test("an LLM answer that reads out letters or digits is not spoken", async () => {
@@ -470,7 +470,7 @@ test("the ID is wrong, then the fix in the next breath: the fix applies to the c
   expect(session.trackingId).toBe("AB909591");
   await talk("the last digit should be seven");
   expect(session.trackingId).toBe("AB909597");
-  expect(said.at(-1)).toContain("Is that correct");
+  expect(said.at(-1)).toContain("Is that right");
 });
 
 test("two letters written as one word are read as letters", async () => {
@@ -578,7 +578,7 @@ test("a day and a spoken time pick that exact slot, without the LLM", async () =
   expect(session.chosenSlotId).toBe(morning!.id);
   await talk("no", "option two");
   expect(session.chosenSlotId).toBe(session.slots[1]!.id);
-  expect(said.at(-1)).toBe(`${session.slots[1]!.label}. Shall I book that?`);
+  expect(said.at(-1)).toBe(`${session.slots[1]!.label}. Shall I go ahead and book that?`);
 });
 
 test("a day that is not on offer gets the closest slot at the time asked for", async () => {
@@ -589,7 +589,7 @@ test("a day that is not on offer gets the closest slot at the time asked for", a
   )!;
   await talk(`${missing} 4 pm`);
   expect(session.stage).toBe("CONFIRM_SLOT");
-  expect(said.at(-1)).toBe(`Sorry, I don't have anything on ${missing}, but I do have ${session.slots[2]!.label}. Shall I book that?`);
+  expect(said.at(-1)).toBe(`Ah, I don't have anything on ${missing}, but I do have ${session.slots[2]!.label}. Shall I go ahead and book that?`);
 });
 
 test("a time that is not on offer gets the nearest slot that day", async () => {
@@ -621,7 +621,7 @@ test("wait a second is not the second slot", async () => {
 test("digits without letters are kept, and the letters can follow", async () => {
   const { session, said, talk } = setup();
   await talk("four one eight two zero seven");
-  expect(said.at(-1)).toContain("I got the numbers 4 1 8 2 0 7");
+  expect(said.at(-1)).toContain("Got it, 4 1 8 2 0 7");
   await talk("bravo delta");
   expect(session.trackingId).toBe("BD418207");
   expect(session.stage).toBe("CONFIRM_ID");
@@ -630,7 +630,7 @@ test("digits without letters are kept, and the letters can follow", async () => 
 test("an ID that goes wrong halfway keeps the good start", async () => {
   const { session, said, talk } = setup();
   await talk("bravo delta four one alpha two zero seven");
-  expect(said.at(-1)).toContain("then lost you");
+  expect(said.at(-1)).toContain("then I lost you");
   expect(session.trackingId).toBe("BD41");
   await talk("eight two zero seven");
   expect(session.trackingId).toBe("BD418207");
@@ -641,7 +641,7 @@ test("a missed ID is asked for in different words each time", async () => {
   await talk("four bravo delta one");
   await talk("four bravo delta one");
   expect(said.at(-1)).not.toBe(said.at(-2));
-  expect(said.at(-1)).toContain("two letters then six digits");
+  expect(said.at(-1)).toContain("two letters and then six digits");
 });
 
 test("reads the JSON turn the model is asked for", async () => {
@@ -676,7 +676,7 @@ test("a streamed reply is spoken sentence by sentence while the model is still w
   expect(brain.said).toEqual([
     "I'm sorry, I don't have that information.",
     "The courier's customer support can tell you.",
-    "What is your tracking ID?",
+    "What's your tracking ID?",
   ]);
 });
 
@@ -707,6 +707,6 @@ test("a caller without the tracking ID is helped once, then offered a way out in
 test("the same question is not tacked onto every answer", async () => {
   const { said, talk } = setup([], answers('{"action":"say","reply":"I only use it to find your parcel.","slot":0}'));
   await talk("why do you want that", "but why though", "seriously why");
-  const asks = said.filter((line) => line.includes("What is your tracking ID?")).length;
+  const asks = said.filter((line) => line.includes("What's your tracking ID?")).length;
   expect(asks).toBeLessThanOrEqual(2);
 });

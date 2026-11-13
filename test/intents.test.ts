@@ -35,6 +35,6 @@ test("anything else is not an intent", () => {
 
 test("answers never claim things the agent cannot know", () => {
   for (const text of ["where is my parcel", "how much is it", "change the address", "cancel my order"]) {
-    expect(matchIntent(text)?.reply).toMatch(/cannot/);
+    expect(matchIntent(text)?.reply).toMatch(/can't|cannot|not able/);
   }
 });
